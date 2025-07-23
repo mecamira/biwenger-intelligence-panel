@@ -1,3 +1,4 @@
+// Función API para Biwenger Intelligence Panel
 // Compatible con Netlify Functions (Node.js 18+)
 
 // Configuración de endpoints de Biwenger
