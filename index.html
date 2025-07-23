@@ -251,6 +251,7 @@
             border-radius: 12px;
             padding: 5px;
             backdrop-filter: blur(10px);
+            overflow-x: auto;
         }
 
         .nav-tab {
@@ -264,6 +265,8 @@
             transition: all 0.3s ease;
             color: rgba(255, 255, 255, 0.7);
             font-weight: 500;
+            white-space: nowrap;
+            min-width: 120px;
         }
 
         .nav-tab.active {
@@ -374,6 +377,56 @@
 
         .market-price {
             background: linear-gradient(45deg, #FF5722, #E64A19);
+        }
+
+        /* Estilos específicos para Mi Equipo */
+        .team-formation {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            color: white;
+            text-align: center;
+        }
+
+        .formation-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+
+        .team-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .team-stat {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(5px);
+        }
+
+        .team-stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .team-stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .my-team-player {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            border-left: 4px solid #2196F3;
+        }
+
+        .my-team-player::before {
+            background: linear-gradient(45deg, #2196F3, #1976D2);
         }
 
         .loading {
@@ -503,6 +556,10 @@
                 flex-direction: column;
             }
             
+            .nav-tab {
+                min-width: auto;
+            }
+            
             .user-header {
                 flex-direction: column;
                 gap: 15px;
@@ -579,6 +636,7 @@
             <!-- Navegación por pestañas -->
             <div class="nav-tabs">
                 <button class="nav-tab active" onclick="showTab('overview')">📊 Panel Principal</button>
+                <button class="nav-tab" onclick="showTab('my-team')">⚽ Mi Equipo</button>
                 <button class="nav-tab" onclick="showTab('market')">🛒 Mercado</button>
                 <button class="nav-tab" onclick="showTab('players')">👥 Base de Datos</button>
                 <button class="nav-tab" onclick="showTab('board')">📋 Tablón</button>
@@ -600,6 +658,45 @@
                             <p>Cargando resumen...</p>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Mi Equipo -->
+            <div id="my-team" class="tab-content">
+                <div class="team-formation" id="teamFormation">
+                    <div class="formation-title">⚽ Mi Equipo</div>
+                    <div class="team-stats" id="teamStats">
+                        <div class="team-stat">
+                            <div class="team-stat-value" id="teamValue">€0M</div>
+                            <div class="team-stat-label">Valor Total</div>
+                        </div>
+                        <div class="team-stat">
+                            <div class="team-stat-value" id="teamPlayers">0</div>
+                            <div class="team-stat-label">Jugadores</div>
+                        </div>
+                        <div class="team-stat">
+                            <div class="team-stat-value" id="teamAvgPoints">0</div>
+                            <div class="team-stat-label">Promedio Puntos</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>👥 Plantilla Actual</h3>
+                    
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" onclick="filterMyTeam('all')">Todos</button>
+                        <button class="filter-btn" onclick="filterMyTeam(1)">Porteros</button>
+                        <button class="filter-btn" onclick="filterMyTeam(2)">Defensas</button>
+                        <button class="filter-btn" onclick="filterMyTeam(3)">Medios</button>
+                        <button class="filter-btn" onclick="filterMyTeam(4)">Delanteros</button>
+                    </div>
+
+                    <div id="myTeamLoading" class="loading">
+                        <div class="spinner"></div>
+                        <p>Cargando tu equipo...</p>
+                    </div>
+                    <div id="myTeamPlayers" class="market-grid"></div>
                 </div>
             </div>
 
@@ -668,6 +765,7 @@
         let allPlayersData = null;
         let marketData = null;
         let homeData = null;
+        let myTeamData = null;
         let currentTab = 'overview';
 
         // Función de inicialización
@@ -908,6 +1006,97 @@
             boardContent.innerHTML = boardHTML;
         }
 
+        // Cargar mi equipo
+        async function loadMyTeam() {
+            const loadingDiv = document.getElementById('myTeamLoading');
+            const teamDiv = document.getElementById('myTeamPlayers');
+
+            loadingDiv.style.display = 'block';
+            teamDiv.innerHTML = '';
+
+            try {
+                if (!myTeamData) {
+                    const response = await fetch('/api/my-team');
+                    if (response.ok) {
+                        myTeamData = await response.json();
+                    } else {
+                        throw new Error('Error cargando equipo');
+                    }
+                }
+
+                displayMyTeam(myTeamData);
+                loadingDiv.style.display = 'none';
+            } catch (error) {
+                console.error('Error cargando mi equipo:', error);
+                loadingDiv.innerHTML = '<p>❌ Error cargando tu equipo</p>';
+            }
+        }
+
+        // Mostrar mi equipo
+        function displayMyTeam(data, filter = 'all') {
+            const teamDiv = document.getElementById('myTeamPlayers');
+            teamDiv.innerHTML = '';
+
+            // Primero intentar obtener jugadores desde diferentes fuentes
+            let players = [];
+            let teamStats = { totalValue: 0, totalPlayers: 0, totalPoints: 0 };
+
+            if (data.data?.team?.players) {
+                // Si tenemos datos específicos del equipo
+                players = Object.values(data.data.team.players);
+            } else if (data.data?.players) {
+                // Si los datos vienen en formato diferente
+                players = Object.values(data.data.players);
+            } else if (data.accountData?.leagues?.[0]) {
+                // Usar datos de la liga como fallback
+                const league = data.accountData.leagues[0];
+                teamDiv.innerHTML = `
+                    <div style="grid-column: 1/-1; text-align: center; padding: 40px; background: rgba(255,193,7,0.1); border-radius: 12px;">
+                        <h3>🔍 Explorando tu equipo...</h3>
+                        <p>Los datos del equipo se están cargando desde: <strong>${data.endpoint || 'endpoint de respaldo'}</strong></p>
+                        <p>Liga: <strong>${league.name}</strong></p>
+                        <p>Balance: <strong>${formatMoney(league.user.balance)}</strong></p>
+                        <p style="margin-top: 20px; font-size: 0.9rem; color: #666;">
+                            💡 Si no ves tus jugadores, es posible que necesitemos ajustar la API para obtener los datos del equipo.
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Aplicar filtros
+            if (filter !== 'all') {
+                players = players.filter(player => player.position === filter);
+            }
+
+            // Calcular estadísticas del equipo
+            teamStats.totalPlayers = players.length;
+            teamStats.totalValue = players.reduce((sum, player) => sum + (player.price || 0), 0);
+            teamStats.totalPoints = players.reduce((sum, player) => sum + (player.points || 0), 0);
+
+            // Actualizar estadísticas del equipo
+            document.getElementById('teamValue').textContent = formatMoney(teamStats.totalValue);
+            document.getElementById('teamPlayers').textContent = teamStats.totalPlayers;
+            document.getElementById('teamAvgPoints').textContent = 
+                teamStats.totalPlayers > 0 ? Math.round(teamStats.totalPoints / teamStats.totalPlayers) : 0;
+
+            // Mostrar jugadores
+            if (players.length === 0) {
+                teamDiv.innerHTML = `
+                    <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #666;">
+                        <h3>🔍 ${filter === 'all' ? 'No se encontraron jugadores' : 'No hay jugadores en esta posición'}</h3>
+                        <p>Endpoint utilizado: <strong>${data.endpoint || 'Desconocido'}</strong></p>
+                    </div>
+                `;
+                return;
+            }
+
+            players.forEach(player => {
+                const playerCard = createPlayerCard(player, null, false, true);
+                teamDiv.appendChild(playerCard);
+            });
+        }
+
         // Cargar mercado
         async function loadMarket() {
             const loadingDiv = document.getElementById('marketLoading');
@@ -1024,9 +1213,9 @@
         }
 
         // Crear tarjeta de jugador
-        function createPlayerCard(player, saleInfo = null, isMarket = false) {
+        function createPlayerCard(player, saleInfo = null, isMarket = false, isMyTeam = false) {
             const div = document.createElement('div');
-            div.className = 'player-card';
+            div.className = `player-card ${isMyTeam ? 'my-team-player' : ''}`;
             
             const positionNames = { 1: 'POR', 2: 'DEF', 3: 'MED', 4: 'DEL' };
             const teamNames = allPlayersData?.data?.teams || {};
@@ -1047,9 +1236,9 @@
             
             let priceHTML = '';
             if (isMarket && saleInfo) {
-                priceHTML = `<div class="player-price market-price">💰 €${formatMoney(saleInfo.price)}</div>`;
+                priceHTML = `<div class="player-price market-price">💰 ${formatMoney(saleInfo.price)}</div>`;
             } else if (player.price) {
-                priceHTML = `<div class="player-price">💎 €${formatMoney(player.price)}</div>`;
+                priceHTML = `<div class="player-price">💎 ${formatMoney(player.price)}</div>`;
             }
 
             div.innerHTML = `
@@ -1075,15 +1264,35 @@
                         ⏰ Hasta: ${new Date(saleInfo.until * 1000).toLocaleDateString('es-ES')}
                     </div>
                 ` : ''}
+                
+                ${isMyTeam ? `
+                    <div style="margin-top: 10px; font-size: 0.8rem; background: rgba(33,150,243,0.1); padding: 5px; border-radius: 5px;">
+                        👤 En tu equipo
+                    </div>
+                ` : ''}
             `;
 
             return div;
         }
 
+        // Filtrar mi equipo
+        function filterMyTeam(filter) {
+            // Actualizar botones activos
+            document.querySelectorAll('#my-team .filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            event.target.classList.add('active');
+            
+            if (myTeamData) {
+                displayMyTeam(myTeamData, filter);
+            }
+        }
+
         // Filtrar mercado
         function filterMarket(filter) {
             // Actualizar botones activos
-            document.querySelectorAll('.filter-btn').forEach(btn => {
+            document.querySelectorAll('#market .filter-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
             
@@ -1097,7 +1306,7 @@
         // Filtrar jugadores
         function filterPlayers(filter) {
             // Actualizar botones activos
-            document.querySelectorAll('.filter-btn').forEach(btn => {
+            document.querySelectorAll('#players .filter-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
             
@@ -1179,6 +1388,8 @@
                 loadMarket();
             } else if (tabName === 'players') {
                 loadAllPlayers();
+            } else if (tabName === 'my-team') {
+                loadMyTeam();
             }
         }
 
@@ -1189,6 +1400,7 @@
             allPlayersData = null;
             marketData = null;
             homeData = null;
+            myTeamData = null;
             
             // Limpiar formulario
             document.getElementById('loginForm').reset();
@@ -1202,6 +1414,7 @@
             document.getElementById('allPlayers').innerHTML = '';
             document.getElementById('marketPlayers').innerHTML = '';
             document.getElementById('boardContent').innerHTML = '';
+            document.getElementById('myTeamPlayers').innerHTML = '';
             
             // Resetear pestañas
             document.querySelectorAll('.nav-tab').forEach(btn => btn.classList.remove('active'));

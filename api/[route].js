@@ -139,6 +139,9 @@ export default async function handler(req, res) {
       case '/league-context':
         return await handleGetLeagueContext(req, res, cookies);
         
+      case '/my-team':
+        return await handleGetMyTeam(req, res, cookies);
+        
       default:
         res.status(404).json({ error: `Endpoint ${path} no encontrado` });
     }
@@ -233,7 +236,7 @@ async function handleTestVersions(req, res, cookies) {
   });
 }
 
-// Manejar login
+// Manejar login con mejor gestión de cookies
 async function handleLogin(req, res, body) {
   console.log('[Login] Starting login process');
   
@@ -359,7 +362,112 @@ async function handleGetLeagueContext(req, res, cookies) {
   }
 }
 
-// Obtener datos del usuario con headers actualizados
+// Obtener mi equipo con formación y jugadores
+async function handleGetMyTeam(req, res, cookies) {
+  const token = cookies.bw_token;
+  
+  if (!token) {
+    return res.status(401).json({ error: 'No autenticado - token no encontrado' });
+  }
+
+  try {
+    console.log('[GetMyTeam] Fetching team data with correct context');
+    
+    // Primero obtener contexto de liga
+    const accountResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
+      method: 'GET',
+      headers: {
+        ...getBaseHeaders(token),
+        'Cookie': buildCookieString(cookies)
+      }
+    });
+
+    if (!accountResponse.ok) {
+      return res.status(accountResponse.status).json({ 
+        error: 'No se pudo obtener contexto de usuario'
+      });
+    }
+
+    const accountData = await accountResponse.json();
+    const context = extractUserContext(accountData);
+    
+    if (!context) {
+      return res.status(400).json({ 
+        error: 'No se pudo extraer contexto de liga'
+      });
+    }
+    
+    console.log('[GetMyTeam] Using context:', { 
+      leagueUserId: context.leagueUserId, 
+      leagueId: context.leagueId 
+    });
+    
+    // Intentar obtener datos del equipo desde diferentes endpoints
+    const teamEndpoints = [
+      `${BIWENGER_BASE_URL}/api/v2/user/${context.leagueUserId}/team`,
+      `${BIWENGER_BASE_URL}/api/v2/team`,
+      `${BIWENGER_BASE_URL}/api/v2/user/${context.leagueUserId}`,
+      `${BIWENGER_BASE_URL}/api/v2/lineup`
+    ];
+
+    let teamData = null;
+    let successfulEndpoint = null;
+
+    for (const endpoint of teamEndpoints) {
+      try {
+        console.log(`[GetMyTeam] Trying endpoint: ${endpoint}`);
+        
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          headers: {
+            ...getBaseHeaders(token, context.leagueUserId, context.leagueId),
+            'Cookie': buildCookieString(cookies)
+          }
+        });
+
+        console.log(`[GetMyTeam] Response status for ${endpoint}: ${response.status}`);
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`[GetMyTeam] Success with endpoint: ${endpoint}`);
+          teamData = data;
+          successfulEndpoint = endpoint;
+          break;
+        } else {
+          const errorText = await response.text();
+          console.log(`[GetMyTeam] Error with ${endpoint}:`, errorText);
+        }
+      } catch (error) {
+        console.log(`[GetMyTeam] Exception with ${endpoint}:`, error.message);
+      }
+    }
+
+    if (teamData) {
+      res.status(200).json({
+        ...teamData,
+        context: context,
+        endpoint: successfulEndpoint,
+        accountData: accountData.data // Incluir datos de account como respaldo
+      });
+    } else {
+      // Si no se pudo obtener datos del equipo, devolver lo que tenemos del account
+      res.status(200).json({
+        message: 'No se pudieron obtener datos específicos del equipo, mostrando datos disponibles',
+        context: context,
+        accountData: accountData.data,
+        attempted: teamEndpoints
+      });
+    }
+  } catch (error) {
+    console.error('[Get My Team Error]:', error);
+    res.status(500).json({ 
+      error: 'Error obteniendo datos del equipo',
+      details: error.message
+    });
+  }
+}
+
+// Obtener datos del usuario con headers actualizados y contexto correcto
 async function handleGetMyData(req, res, cookies) {
   const token = cookies.bw_token;
   
@@ -663,7 +771,7 @@ async function handleDebugLeagues(req, res, cookies) {
   res.status(200).json(debugInfo);
 }
 
-// Función de investigación
+// Función de investigación mejorada
 async function handleInvestigate(req, res, cookies) {
   const token = cookies.bw_token;
   
