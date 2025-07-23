@@ -87,6 +87,9 @@ exports.handler = async (event, context) => {
         
       case '/debug':
         return await handleDebugLeagues(cookies);
+
+      case '/investigate':
+        return await handleInvestigate(cookies);
         
       default:
         return {
@@ -190,7 +193,8 @@ async function handleLogin(body) {
           'Authorization': `Bearer ${token}`,
           'x-league': 'la-liga',
           'x-user': userData?.id || '',
-          'x-version': '1.0'
+          'x-version': '2.0',
+          'x-lang': 'es'
         },
       });
 
@@ -426,7 +430,8 @@ async function handleGetMarket(cookies) {
         'Authorization': `Bearer ${token}`,
         'x-league': leagueSlug,
         'x-user': userId,
-        'x-version': '1.0'
+        'x-version': '2.0',
+        'x-lang': 'es'
       },
     });
 
@@ -496,7 +501,8 @@ async function handleGetUser(cookies, userId) {
         'Authorization': `Bearer ${token}`,
         'x-league': leagueSlug,
         'x-user': currentUserId,
-        'x-version': '1.0'
+        'x-version': '2.0',
+        'x-lang': 'es'
       },
     });
 
@@ -596,4 +602,67 @@ async function handleDebugLeagues(cookies) {
     },
     body: JSON.stringify(debugInfo, null, 2),
   };
+}
+// Función de investigación
+async function handleInvestigate(cookies) {
+  const token = cookies.bw_token;
+  
+  if (!token) {
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        error: 'No token - login first',
+        cookies: Object.keys(cookies)
+      }, null, 2),
+    };
+  }
+
+  try {
+    const response = await fetch('https://biwenger.as.com/api/v2/account', {
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'x-version': '2.0',
+        'x-lang': 'es'
+      }
+    });
+
+    let data;
+    if (response.ok) {
+      data = await response.json();
+    } else {
+      data = { 
+        error: 'Response not OK', 
+        status: response.status,
+        statusText: response.statusText 
+      };
+    }
+
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        status: response.status,
+        data: data,
+        tokenLength: token.length,
+        timestamp: new Date().toISOString()
+      }, null, 2),
+    };
+  } catch (error) {
+    return {
+      statusCode: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ error: error.message }),
+    };
+  }
 }
