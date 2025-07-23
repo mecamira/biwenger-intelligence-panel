@@ -77,7 +77,9 @@ exports.handler = async (event, context) => {
         return await handleLogin(body);
         
       case '/me':
-        return await handleGetMyData(cookies);
+        const leagueId = event.queryStringParameters?.leagueId;
+        const userId = event.queryStringParameters?.userId;
+        return await handleGetMyData(cookies, leagueId, userId);
         
       case '/players':
         return await handleGetPlayers();
@@ -224,7 +226,7 @@ async function handleLogin(body) {
 }
 
 // Obtener datos del usuario actual
-async function handleGetMyData(cookies) {
+async function handleGetMyData(cookies, leagueId, userId) {
   const token = cookies.bw_token;
   
   if (!token) {
@@ -238,16 +240,27 @@ async function handleGetMyData(cookies) {
     };
   }
 
+  if (!leagueId || !userId) {
+    return {
+      statusCode: 400,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ error: 'leagueId y userId son requeridos' }),
+    };
+  }
+
   try {
-    console.log('[GetMyData] Fetching user data');
+    console.log(`[GetMyData] Fetching user data for league ${leagueId} and user ${userId}`);
     
     const response = await fetch(`${BIWENGER_BASE_URL}/api/v2/home`, {
       method: 'GET',
       headers: {
         ...getBaseHeaders(),
         'Authorization': `Bearer ${token}`,
-        'x-league': 'la-liga',
-        'x-user': cookies.bw_user || '',
+        'x-league': leagueId,
+        'x-user': userId,
         'x-version': '1.0'
       },
     });

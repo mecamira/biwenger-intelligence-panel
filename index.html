@@ -377,15 +377,10 @@
 
         // Verificar estado de autenticación
         async function checkAuthStatus() {
-            try {
-                const response = await fetch('/.netlify/functions/api/me');
-                if (response.ok) {
-                    const userData = await response.json();
-                    handleLoginSuccess(userData);
-                }
-            } catch (error) {
-                console.log('No hay sesión activa');
-            }
+            // Esta función ahora solo redirige a la de login si hay un token,
+            // pero la carga de datos se hará después del login.
+            // La lógica de /me requiere leagueId y userId que no tenemos aquí.
+            console.log('Verificando token de sesión...');
         }
 
         // Manejar login
@@ -434,8 +429,15 @@
         }
 
         // Manejar login exitoso
-        function handleLoginSuccess(userData) {
-            currentUser = userData.user || userData;
+        function handleLoginSuccess(data) {
+            currentUser = data.user;
+
+            // Asumimos que la primera liga es la activa
+            if (data.data && data.data.leagues && data.data.leagues.length > 0) {
+                const activeLeague = data.data.leagues[0];
+                currentUser.leagueId = activeLeague.id;
+                currentUser.userId = activeLeague.user.id;
+            }
             
             // Mostrar dashboard
             document.getElementById('loginSection').style.display = 'none';
@@ -456,17 +458,27 @@
 
         // Cargar mi equipo
         async function loadMyTeam() {
+            if (!currentUser || !currentUser.leagueId || !currentUser.userId) {
+                console.error('Faltan datos para cargar el equipo:', currentUser);
+                document.getElementById('myTeamLoading').innerHTML = '<p>Error: Faltan datos de usuario/liga.</p>';
+                return;
+            }
+
             try {
-                const response = await fetch('/.netlify/functions/api/me');
+                const url = `/.netlify/functions/api/me?leagueId=${currentUser.leagueId}&userId=${currentUser.userId}`;
+                const response = await fetch(url);
+
                 if (response.ok) {
                     const data = await response.json();
                     displayMyTeam(data);
                 } else {
-                    document.getElementById('myTeamLoading').innerHTML = '<p>Error cargando equipo</p>';
+                    const errorData = await response.json();
+                    console.error('Error del API cargando equipo:', errorData);
+                    document.getElementById('myTeamLoading').innerHTML = `<p>Error cargando equipo: ${errorData.error}</p>`;
                 }
             } catch (error) {
-                console.error('Error cargando mi equipo:', error);
-                document.getElementById('myTeamLoading').innerHTML = '<p>Error cargando equipo</p>';
+                console.error('Error de red cargando mi equipo:', error);
+                document.getElementById('myTeamLoading').innerHTML = '<p>Error de conexión al cargar equipo.</p>';
             }
         }
 
