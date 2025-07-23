@@ -239,15 +239,15 @@ async function handleGetMyData(req, res, cookies) {
         console.log('[GetMyData] Trying endpoint:', endpoint);
         
         const response = await fetch(endpoint, {
-          method: 'GET',
-          headers: {
+        method: 'GET',
+        headers: {
             ...getBaseHeaders(),
             'Authorization': `Bearer ${token}`,
-            'x-league': leagueSlug,
-            'x-user': userId,
+            'x-league': 'la-liga',
+            'x-user': cookies.bw_user || '',
             'x-version': '2.0',
             'x-lang': 'es'
-          },
+        },
         });
 
         console.log('[GetMyData] Response status for', endpoint, ':', response.status);
@@ -369,10 +369,12 @@ async function handleDebugLeagues(req, res, cookies) {
       const response = await fetch(endpoint, {
         method: 'GET',
         headers: {
-          ...getBaseHeaders(),
-          'Authorization': `Bearer ${token}`,
-          'x-version': '2.0',
-          'x-lang': 'es'
+        ...getBaseHeaders(),
+        'Authorization': `Bearer ${token}`,
+        'x-league': 'la-liga',
+        'x-user': cookies.bw_user || '',
+        'x-version': '2.0',
+        'x-lang': 'es'
         },
       });
 
