@@ -184,11 +184,14 @@ async function handleLogin(body) {
     // Obtener información de contexto del usuario
     let userContext = {};
     try {
-      const contextResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
+      const contextResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/home`, {
         method: 'GET',
         headers: {
           ...getBaseHeaders(),
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'x-league': 'la-liga',
+          'x-user': userData?.id || '',
+          'x-version': '1.0'
         },
       });
 
@@ -282,8 +285,8 @@ async function handleGetMyData(cookies) {
     // Probar múltiples endpoints para obtener datos
     const endpoints = [
       `${BIWENGER_BASE_URL}/api/v2/home`,
-      `${BIWENGER_BASE_URL}/api/v2/account`,
-      `${BIWENGER_BASE_URL}/api/v2/user/${userId}`
+      `${BIWENGER_BASE_URL}/api/v2/user/${userId}`,
+      `${BIWENGER_BASE_URL}/api/v2/account`
     ];
 
     let successfulResponse = null;
