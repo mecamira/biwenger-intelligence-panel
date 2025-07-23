@@ -320,8 +320,8 @@ async function handleGetMyData(cookies) {
           };
           break;
         } else {
-          const errorText = await response.text();
-          console.log('[GetMyData] Error with endpoint:', endpoint, errorText);
+          console.log('[GetMyData] Error with endpoint:', endpoint, 'Status:', response.status);
+          // No leer el body si no es exitoso para evitar el error "Body has already been read"
         }
       } catch (endpointError) {
         console.log('[GetMyData] Exception with endpoint:', endpoint, endpointError.message);
