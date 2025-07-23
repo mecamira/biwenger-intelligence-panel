@@ -323,8 +323,8 @@ async function handleGetMarket(req, res, cookies) {
       headers: {
         ...getBaseHeaders(),
         'Authorization': `Bearer ${token}`,
-        'x-league': leagueSlug,
-        'x-user': userId,
+        'x-league': 'la-liga',
+        'x-user': cookies.bw_user || '',
         'x-version': '2.0',
         'x-lang': 'es'
       },
