@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biwenger Intelligence Panel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.2s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+        }
+
+        .login-form {
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e1e1;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .dashboard {
+            display: none;
+        }
+
+        .dashboard.active {
+            display: block;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+            text-align: center;
+            padding: 20px;
+            border-radius: 12px;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .players-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .player-card {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .player-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .player-position {
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .player-price {
+            background: #667eea;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .nav-tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e1e1e1;
+        }
+
+        .nav-tab {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .nav-tab.active {
+            border-bottom-color: #667eea;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+
+        .logout-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            float: right;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏆 Biwenger Intelligence Panel</h1>
+            <p>Panel de control avanzado para la gestión inteligente de tu equipo</p>
+        </div>
+
+        <!-- Formulario de Login -->
+        <div id="loginSection" class="card login-form">
+            <h2 style="text-align: center; margin-bottom: 25px; color: #333;">Iniciar Sesión</h2>
+            
+            <div id="loginMessages"></div>
+            
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="email">Email de Biwenger:</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Contraseña:</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                
+                <button type="submit" class="btn" id="loginBtn">
+                    <span id="loginBtnText">Iniciar Sesión</span>
+                    <div id="loginSpinner" class="spinner" style="display: none; width: 20px; height: 20px; margin: 0 auto;"></div>
+                </button>
+            </form>
+        </div>
+
+        <!-- Dashboard Principal -->
+        <div id="dashboard" class="dashboard">
+            <button class="logout-btn" onclick="logout()">Cerrar Sesión</button>
+            <div style="clear: both;"></div>
+
+            <!-- Navegación por pestañas -->
+            <div class="nav-tabs">
+                <button class="nav-tab active" onclick="showTab('overview')">Panel Principal</button>
+                <button class="nav-tab" onclick="showTab('market')">Mercado</button>
+                <button class="nav-tab" onclick="showTab('players')">Base de Datos</button>
+                <button class="nav-tab" onclick="showTab('rivals')">Rivales</button>
+            </div>
+
+            <!-- Panel Principal -->
+            <div id="overview" class="tab-content active">
+                <div class="dashboard-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="teamValue">€0M</div>
+                        <div class="stat-label">Valor del Equipo</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(45deg, #2196F3, #1976D2);">
+                        <div class="stat-value" id="balance">€0M</div>
+                        <div class="stat-label">Saldo Disponible</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(45deg, #FF9800, #F57C00);">
+                        <div class="stat-value" id="totalPoints">0</div>
+                        <div class="stat-label">Puntos Totales</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Mi Plantilla</h3>
+                    <div id="myTeamLoading" class="loading">
+                        <div class="spinner"></div>
+                        <p>Cargando tu equipo...</p>
+                    </div>
+                    <div id="myTeamPlayers" class="players-grid"></div>
+                </div>
+            </div>
+
+            <!-- Mercado -->
+            <div id="market" class="tab-content">
+                <div class="card">
+                    <h3>Jugadores en el Mercado</h3>
+                    <div id="marketLoading" class="loading">
+                        <div class="spinner"></div>
+                        <p>Cargando mercado...</p>
+                    </div>
+                    <div id="marketPlayers" class="players-grid"></div>
+                </div>
+            </div>
+
+            <!-- Base de Datos de Jugadores -->
+            <div id="players" class="tab-content">
+                <div class="card">
+                    <h3>Base de Datos de Jugadores</h3>
+                    <div id="playersLoading" class="loading">
+                        <div class="spinner"></div>
+                        <p>Cargando base de datos...</p>
+                    </div>
+                    <div id="allPlayers" class="players-grid"></div>
+                </div>
+            </div>
+
+            <!-- Rivales -->
+            <div id="rivals" class="tab-content">
+                <div class="card">
+                    <h3>Análisis de Rivales</h3>
+                    <p>Próximamente: Análisis detallado de los equipos de tus rivales</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Estado global de la aplicación
+        let currentUser = null;
+        let allPlayersData = null;
+        let currentTab = 'overview';
+
+        // Función de inicialización
+        document.addEventListener('DOMContentLoaded', function() {
+            // Verificar si ya está autenticado
+            checkAuthStatus();
+            
+            // Configurar formulario de login
+            document.getElementById('loginForm').addEventListener('submit', handleLogin);
+        });
+
+        // Verificar estado de autenticación
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('/.netlify/functions/api/me');
+                if (response.ok) {
+                    const userData = await response.json();
+                    handleLoginSuccess(userData);
+                }
+            } catch (error) {
+                console.log('No hay sesión activa');
+            }
+        }
+
+        // Manejar login
+        async function handleLogin(event) {
+            event.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const loginBtn = document.getElementById('loginBtn');
+            const loginBtnText = document.getElementById('loginBtnText');
+            const loginSpinner = document.getElementById('loginSpinner');
+            const messagesDiv = document.getElementById('loginMessages');
+
+            // Mostrar spinner
+            loginBtn.disabled = true;
+            loginBtnText.style.display = 'none';
+            loginSpinner.style.display = 'block';
+            messagesDiv.innerHTML = '';
+
+            try {
+                const response = await fetch('/.netlify/functions/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email, password }),
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessage('¡Login exitoso! Cargando dashboard...', 'success');
+                    setTimeout(() => handleLoginSuccess(data), 1000);
+                } else {
+                    showMessage(data.error || 'Error de autenticación', 'error');
+                }
+            } catch (error) {
+                console.error('Error en login:', error);
+                showMessage('Error de conexión. Inténtalo de nuevo.', 'error');
+            } finally {
+                // Ocultar spinner
+                loginBtn.disabled = false;
+                loginBtnText.style.display = 'inline';
+                loginSpinner.style.display = 'none';
+            }
+        }
+
+        // Manejar login exitoso
+        function handleLoginSuccess(userData) {
+            currentUser = userData.user || userData;
+            
+            // Mostrar dashboard
+            document.getElementById('loginSection').style.display = 'none';
+            document.getElementById('dashboard').classList.add('active');
+            
+            // Cargar datos iniciales
+            loadDashboardData();
+        }
+
+        // Cargar datos del dashboard
+        async function loadDashboardData() {
+            // Cargar datos del equipo
+            loadMyTeam();
+            
+            // Cargar base de datos de jugadores
+            loadAllPlayers();
+        }
+
+        // Cargar mi equipo
+        async function loadMyTeam() {
+            try {
+                const response = await fetch('/.netlify/functions/api/me');
+                if (response.ok) {
+                    const data = await response.json();
+                    displayMyTeam(data);
+                } else {
+                    document.getElementById('myTeamLoading').innerHTML = '<p>Error cargando equipo</p>';
+                }
+            } catch (error) {
+                console.error('Error cargando mi equipo:', error);
+                document.getElementById('myTeamLoading').innerHTML = '<p>Error cargando equipo</p>';
+            }
+        }
+
+        // Cargar todos los jugadores
+        async function loadAllPlayers() {
+            if (allPlayersData) {
+                displayPlayers(allPlayersData);
+                return;
+            }
+
+            try {
+                const response = await fetch('/.netlify/functions/api/players');
+                if (response.ok) {
+                    const data = await response.json();
+                    allPlayersData = data;
+                    displayPlayers(data);
+                } else {
+                    document.getElementById('playersLoading').innerHTML = '<p>Error cargando jugadores</p>';
+                }
+            } catch (error) {
+                console.error('Error cargando jugadores:', error);
+                document.getElementById('playersLoading').innerHTML = '<p>Error cargando jugadores</p>';
+            }
+        }
+
+        // Cargar mercado
+        async function loadMarket() {
+            const loadingDiv = document.getElementById('marketLoading');
+            const marketDiv = document.getElementById('marketPlayers');
+
+            loadingDiv.style.display = 'block';
+            marketDiv.innerHTML = '';
+
+            try {
+                const response = await fetch('/.netlify/functions/api/market');
+                if (response.ok) {
+                    const data = await response.json();
+                    displayMarket(data);
+                    loadingDiv.style.display = 'none';
+                } else {
+                    loadingDiv.innerHTML = '<p>Error cargando mercado</p>';
+                }
+            } catch (error) {
+                console.error('Error cargando mercado:', error);
+                loadingDiv.innerHTML = '<p>Error cargando mercado</p>';
+            }
+        }
+
+        // Mostrar mi equipo
+        function displayMyTeam(data) {
+            const loadingDiv = document.getElementById('myTeamLoading');
+            const teamDiv = document.getElementById('myTeamPlayers');
+            
+            loadingDiv.style.display = 'none';
+
+            // Actualizar estadísticas
+            if (data.data && data.data.account) {
+                document.getElementById('balance').textContent = `€${(data.data.account.balance / 1000000).toFixed(1)}M`;
+            }
+            
+            if (data.data && data.data.team) {
+                // Mostrar jugadores del equipo
+                teamDiv.innerHTML = '';
+                Object.values(data.data.team.players || {}).forEach(player => {
+                    const playerCard = createPlayerCard(player);
+                    teamDiv.appendChild(playerCard);
+                });
+
+                // Calcular valor total del equipo
+                const totalValue = Object.values(data.data.team.players || {})
+                    .reduce((sum, player) => sum + (player.price || 0), 0);
+                document.getElementById('teamValue').textContent = `€${(totalValue / 1000000).toFixed(1)}M`;
+            }
+        }
+
+        // Mostrar jugadores
+        function displayPlayers(data) {
+            const loadingDiv = document.getElementById('playersLoading');
+            const playersDiv = document.getElementById('allPlayers');
+            
+            loadingDiv.style.display = 'none';
+            playersDiv.innerHTML = '';
+
+            if (data.data && data.data.players) {
+                // Convertir objeto de jugadores a array y mostrar los primeros 50
+                const playersArray = Object.values(data.data.players).slice(0, 50);
+                
+                playersArray.forEach(player => {
+                    const playerCard = createPlayerCard(player);
+                    playersDiv.appendChild(playerCard);
+                });
+            }
+        }
+
+        // Mostrar mercado
+        function displayMarket(data) {
+            const marketDiv = document.getElementById('marketPlayers');
+            marketDiv.innerHTML = '';
+
+            if (data.data && data.data.sales) {
+                data.data.sales.forEach(sale => {
+                    const playerCard = createPlayerCard(sale.player, sale);
+                    marketDiv.appendChild(playerCard);
+                });
+            } else {
+                marketDiv.innerHTML = '<p>No hay jugadores en el mercado actualmente.</p>';
+            }
+        }
+
+        // Crear tarjeta de jugador
+        function createPlayerCard(player, saleInfo = null) {
+            const div = document.createElement('div');
+            div.className = 'player-card';
+            
+            const positionNames = {
+                1: 'POR',
+                2: 'DEF', 
+                3: 'MED',
+                4: 'DEL'
+            };
+
+            const statusColors = {
+                'ok': '#4CAF50',
+                'injured': '#f44336',
+                'suspended': '#ff9800',
+                'doubt': '#ff9800'
+            };
+
+            const price = player.price || 0;
+            const priceFormatted = `€${(price / 1000000).toFixed(1)}M`;
+            const position = positionNames[player.position] || 'N/A';
+            const status = player.status || 'ok';
+            const statusColor = statusColors[status] || '#4CAF50';
+
+            let cardContent = `
+                <div class="player-name">${player.name || 'N/A'}</div>
+                <div class="player-position">${position}</div>
+                <div class="player-price">${priceFormatted}</div>
+                <div style="margin-top: 8px; font-size: 0.8rem;">
+                    <div>Puntos: ${player.points || 0}</div>
+                    <div style="color: ${statusColor};">Estado: ${status.toUpperCase()}</div>
+                </div>
+            `;
+
+            if (saleInfo) {
+                cardContent += `
+                    <div style="margin-top: 8px; font-size: 0.8rem; background: #e3f2fd; padding: 4px; border-radius: 4px;">
+                        <div>En venta por: €${(saleInfo.price / 1000000).toFixed(1)}M</div>
+                        <div>Ofertas: ${saleInfo.offers || 0}</div>
+                    </div>
+                `;
+            }
+
+            div.innerHTML = cardContent;
+            return div;
+        }
+
+        // Cambiar pestaña
+        function showTab(tabName) {
+            // Ocultar todas las pestañas
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Remover clase active de todos los botones
+            document.querySelectorAll('.nav-tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Mostrar pestaña seleccionada
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+            
+            currentTab = tabName;
+
+            // Cargar datos específicos de la pestaña si es necesario
+            if (tabName === 'market' && document.getElementById('marketPlayers').innerHTML === '') {
+                loadMarket();
+            }
+        }
+
+        // Cerrar sesión
+        function logout() {
+            // Limpiar estado
+            currentUser = null;
+            allPlayersData = null;
+            
+            // Limpiar formulario
+            document.getElementById('loginForm').reset();
+            document.getElementById('loginMessages').innerHTML = '';
+            
+            // Mostrar formulario de login
+            document.getElementById('dashboard').classList.remove('active');
+            document.getElementById('loginSection').style.display = 'block';
+            
+            // Limpiar contenido
+            document.getElementById('myTeamPlayers').innerHTML = '';
+            document.getElementById('allPlayers').innerHTML = '';
+            document.getElementById('marketPlayers').innerHTML = '';
+            
+            // Resetear pestañas
+            showTab('overview');
+        }
+
+        // Mostrar mensajes
+        function showMessage(message, type) {
+            const messagesDiv = document.getElementById('loginMessages');
+            messagesDiv.innerHTML = `<div class="${type}">${message}</div>`;
+        }
+
+        // Agregar funcionalidad a las pestañas por defecto
+        document.addEventListener('DOMContentLoaded', function() {
+            // Event listeners para pestañas
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const tabName = this.getAttribute('onclick').match(/'(.+)'/)[1];
+                    showTab(tabName);
+                });
+            });
+        });
+    </script>
+</body>
+</html>
