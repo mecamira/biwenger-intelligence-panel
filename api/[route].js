@@ -369,12 +369,12 @@ async function handleDebugLeagues(req, res, cookies) {
       const response = await fetch(endpoint, {
         method: 'GET',
         headers: {
-        ...getBaseHeaders(),
-        'Authorization': `Bearer ${token}`,
-        'x-league': 'la-liga',
-        'x-user': cookies.bw_user || '',
-        'x-version': '2.0',
-        'x-lang': 'es'
+            ...getBaseHeaders(),
+            'Authorization': `Bearer ${token}`,
+            'x-league': 'la-liga',
+            'x-user': cookies.bw_user || '',
+            'x-version': '2.0',
+            'x-lang': 'es'
         },
       });
 
