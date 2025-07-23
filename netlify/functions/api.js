@@ -85,9 +85,8 @@ exports.handler = async (event, context) => {
       case '/market':
         return await handleGetMarket(cookies);
         
-      case '/user':
-        const userId = event.queryStringParameters?.id;
-        return await handleGetUser(cookies, userId);
+      case '/debug':
+        return await handleDebugLeagues(cookies);
         
       default:
         return {
@@ -526,4 +525,74 @@ async function handleGetUser(cookies, userId) {
       }),
     };
   }
+}
+
+// Función de debug para encontrar ligas
+async function handleDebugLeagues(cookies) {
+  const token = cookies.bw_token;
+  
+  if (!token) {
+    return {
+      statusCode: 401,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ error: 'No autenticado' }),
+    };
+  }
+
+  const debugInfo = {
+    cookies: cookies,
+    endpoints: []
+  };
+
+  // Probar múltiples endpoints para encontrar información de ligas
+  const testEndpoints = [
+    `${BIWENGER_BASE_URL}/api/v2/account`,
+    `${BIWENGER_BASE_URL}/api/v2/home`,
+    `${BIWENGER_BASE_URL}/api/v2/leagues`,
+    `${BIWENGER_BASE_URL}/api/v2/user/leagues`
+  ];
+
+  for (const endpoint of testEndpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          ...getBaseHeaders(),
+          'Authorization': `Bearer ${token}`
+        },
+      });
+
+      const result = {
+        endpoint: endpoint,
+        status: response.status,
+        ok: response.ok,
+        data: null
+      };
+
+      if (response.ok) {
+        result.data = await response.json();
+      } else {
+        result.error = await response.text();
+      }
+
+      debugInfo.endpoints.push(result);
+    } catch (error) {
+      debugInfo.endpoints.push({
+        endpoint: endpoint,
+        error: error.message
+      });
+    }
+  }
+
+  return {
+    statusCode: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(debugInfo, null, 2),
+  };
 }
