@@ -378,7 +378,7 @@
         // Verificar estado de autenticación
         async function checkAuthStatus() {
             try {
-                const response = await fetch('/.netlify/functions/api/me');
+                const response = await fetch('/api/me');
                 if (response.ok) {
                     const userData = await response.json();
                     handleLoginSuccess(userData);
@@ -457,7 +457,7 @@
         // Cargar mi equipo
         async function loadMyTeam() {
             try {
-                const response = await fetch('/.netlify/functions/api/me');
+                const response = await fetch('/api/me');
                 if (response.ok) {
                     const data = await response.json();
                     displayMyTeam(data);
@@ -478,7 +478,7 @@
             }
 
             try {
-                const response = await fetch('/.netlify/functions/api/players');
+                const response = await fetch('/api/players');
                 if (response.ok) {
                     const data = await response.json();
                     allPlayersData = data;
@@ -501,7 +501,7 @@
             marketDiv.innerHTML = '';
 
             try {
-                const response = await fetch('/.netlify/functions/api/market');
+                const response = await fetch('/api/market');
                 if (response.ok) {
                     const data = await response.json();
                     displayMarket(data);
