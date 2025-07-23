@@ -6,7 +6,7 @@ const BIWENGER_BASE_URL = 'https://biwenger.as.com';
 const BIWENGER_API_URL = 'https://cf.biwenger.com';
 
 // Headers actualizados para evitar el error "Old version"
-const getBaseHeaders = (token = null, userId = null, additionalHeaders = {}) => {
+const getBaseHeaders = (token = null, userId = null, leagueId = null, additionalHeaders = {}) => {
   const baseHeaders = {
     'Content-Type': 'application/json',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -25,7 +25,7 @@ const getBaseHeaders = (token = null, userId = null, additionalHeaders = {}) => 
     // Headers críticos para evitar "Old version"
     'X-Version': '640', // Versión actualizada
     'X-Lang': 'es',
-    'X-League': 'la-liga'
+    'X-League': leagueId || 'la-liga' // Usar league ID específico si está disponible
   };
 
   // Agregar headers de autenticación si hay token
@@ -33,12 +33,31 @@ const getBaseHeaders = (token = null, userId = null, additionalHeaders = {}) => 
     baseHeaders['Authorization'] = `Bearer ${token}`;
   }
 
-  // Agregar X-User si tenemos userId
+  // Agregar X-User si tenemos userId (debe ser el ID del usuario EN LA LIGA)
   if (userId) {
     baseHeaders['X-User'] = userId;
   }
 
   return { ...baseHeaders, ...additionalHeaders };
+};
+
+// Función para extraer IDs correctos desde account data
+const extractUserContext = (accountData) => {
+  if (!accountData?.data) return null;
+  
+  const leagues = accountData.data.leagues;
+  if (!leagues || leagues.length === 0) return null;
+  
+  // Tomar la primera liga por defecto
+  const league = leagues[0];
+  
+  return {
+    accountId: accountData.data.account?.id,
+    leagueUserId: league.user?.id, // Este es el ID que necesitamos para X-User
+    leagueId: league.id,
+    leagueName: league.name,
+    leagueSlug: league.competition || 'la-liga'
+  };
 };
 
 // Función para manejar cookies de sesión
@@ -116,6 +135,9 @@ export default async function handler(req, res) {
 
       case '/test-versions':
         return await handleTestVersions(req, res, cookies);
+        
+      case '/league-context':
+        return await handleGetLeagueContext(req, res, cookies);
         
       default:
         res.status(404).json({ error: `Endpoint ${path} no encontrado` });
@@ -286,10 +308,60 @@ async function handleLogin(req, res, body) {
   }
 }
 
+// Nuevo endpoint para obtener contexto de liga
+async function handleGetLeagueContext(req, res, cookies) {
+  const token = cookies.bw_token;
+  
+  if (!token) {
+    return res.status(401).json({ error: 'No autenticado - token no encontrado' });
+  }
+
+  try {
+    console.log('[GetLeagueContext] Extracting league context');
+    
+    const accountResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
+      method: 'GET',
+      headers: {
+        ...getBaseHeaders(token),
+        'Cookie': buildCookieString(cookies)
+      }
+    });
+
+    if (accountResponse.ok) {
+      const accountData = await accountResponse.json();
+      const context = extractUserContext(accountData);
+      
+      if (context) {
+        res.status(200).json({
+          success: true,
+          context: context,
+          rawAccountData: accountData.data
+        });
+      } else {
+        res.status(400).json({
+          error: 'No se pudo extraer contexto de liga',
+          accountData: accountData.data
+        });
+      }
+    } else {
+      const errorText = await accountResponse.text();
+      res.status(accountResponse.status).json({ 
+        error: `Error ${accountResponse.status}`,
+        details: errorText
+      });
+    }
+  } catch (error) {
+    console.error('[GetLeagueContext Error]:', error);
+    res.status(500).json({ 
+      error: 'Error obteniendo contexto de liga',
+      details: error.message
+    });
+  }
+}
+
 // Obtener datos del usuario con headers actualizados
 async function handleGetMyData(req, res, cookies) {
   const token = cookies.bw_token;
-  const userId = cookies.bw_user;
   
   if (!token) {
     return res.status(401).json({ error: 'No autenticado - token no encontrado' });
@@ -298,27 +370,29 @@ async function handleGetMyData(req, res, cookies) {
   try {
     console.log('[GetMyData] Fetching user data with updated headers');
     
-    // Primero intentar obtener datos desde /api/v2/account
+    // Primero obtener datos de account para extraer contexto
     const accountResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
       method: 'GET',
       headers: {
-        ...getBaseHeaders(token, userId),
+        ...getBaseHeaders(token),
         'Cookie': buildCookieString(cookies)
       }
     });
 
     if (accountResponse.ok) {
       const accountData = await accountResponse.json();
+      const context = extractUserContext(accountData);
       
-      // Extraer userId si no lo tenemos
-      const realUserId = userId || accountData.data?.account?.id;
+      if (!context) {
+        return res.status(200).json(accountData); // Devolver solo account si no hay contexto
+      }
       
-      // Intentar obtener más datos desde /api/v2/home
+      // Intentar obtener más datos desde /api/v2/home con el contexto correcto
       try {
         const homeResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/home`, {
           method: 'GET',
           headers: {
-            ...getBaseHeaders(token, realUserId),
+            ...getBaseHeaders(token, context.leagueUserId, context.leagueId),
             'Cookie': buildCookieString(cookies)
           }
         });
@@ -328,15 +402,22 @@ async function handleGetMyData(req, res, cookies) {
           // Combinar datos de account y home
           res.status(200).json({
             account: accountData,
-            home: homeData
+            home: homeData,
+            context: context
           });
         } else {
-          // Solo devolver datos de account si home falla
-          res.status(200).json(accountData);
+          console.warn('[GetMyData] Home failed:', await homeResponse.text());
+          res.status(200).json({
+            account: accountData,
+            context: context
+          });
         }
       } catch (homeError) {
         console.warn('[GetMyData] Home endpoint failed:', homeError.message);
-        res.status(200).json(accountData);
+        res.status(200).json({
+          account: accountData,
+          context: context
+        });
       }
     } else {
       const errorText = await accountResponse.text();
@@ -386,22 +467,50 @@ async function handleGetPlayers(req, res) {
   }
 }
 
-// Obtener mercado con headers actualizados
+// Obtener mercado con headers actualizados y contexto correcto
 async function handleGetMarket(req, res, cookies) {
   const token = cookies.bw_token;
-  const userId = cookies.bw_user;
   
   if (!token) {
     return res.status(401).json({ error: 'No autenticado' });
   }
 
   try {
-    console.log('[GetMarket] Fetching market data');
+    console.log('[GetMarket] Fetching market data with correct context');
+    
+    // Primero obtener contexto de liga
+    const accountResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
+      method: 'GET',
+      headers: {
+        ...getBaseHeaders(token),
+        'Cookie': buildCookieString(cookies)
+      }
+    });
+
+    if (!accountResponse.ok) {
+      return res.status(accountResponse.status).json({ 
+        error: 'No se pudo obtener contexto de usuario'
+      });
+    }
+
+    const accountData = await accountResponse.json();
+    const context = extractUserContext(accountData);
+    
+    if (!context) {
+      return res.status(400).json({ 
+        error: 'No se pudo extraer contexto de liga'
+      });
+    }
+    
+    console.log('[GetMarket] Using context:', { 
+      leagueUserId: context.leagueUserId, 
+      leagueId: context.leagueId 
+    });
     
     const response = await fetch(`${BIWENGER_BASE_URL}/api/v2/market`, {
       method: 'GET',
       headers: {
-        ...getBaseHeaders(token, userId),
+        ...getBaseHeaders(token, context.leagueUserId, context.leagueId),
         'Cookie': buildCookieString(cookies)
       }
     });
@@ -410,12 +519,16 @@ async function handleGetMarket(req, res, cookies) {
 
     if (response.ok) {
       const data = await response.json();
-      res.status(200).json(data);
+      res.status(200).json({
+        ...data,
+        context: context // Incluir contexto en la respuesta
+      });
     } else {
       const errorText = await response.text();
       res.status(response.status).json({ 
         error: `Error ${response.status}`,
-        details: errorText
+        details: errorText,
+        context: context
       });
     }
   } catch (error) {
@@ -444,51 +557,54 @@ async function handleDebugLeagues(req, res, cookies) {
     return res.status(200).json(debugInfo);
   }
 
-  // Extraer userId del endpoint account primero
-  let userId = cookies.bw_user;
+  // Extraer contexto completo del endpoint account
+  let context = null;
   
-  if (!userId) {
-    try {
-      const accountResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
-        method: 'GET',
-        headers: {
-          ...getBaseHeaders(token),
-          'Cookie': buildCookieString(cookies)
-        }
-      });
-      
-      if (accountResponse.ok) {
-        const accountData = await accountResponse.json();
-        userId = accountData.data?.account?.id;
-        console.log('[Debug] Extracted userId:', userId);
+  try {
+    const accountResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
+      method: 'GET',
+      headers: {
+        ...getBaseHeaders(token),
+        'Cookie': buildCookieString(cookies)
       }
-    } catch (error) {
-      console.warn('[Debug] Could not extract userId:', error.message);
+    });
+    
+    if (accountResponse.ok) {
+      const accountData = await accountResponse.json();
+      context = extractUserContext(accountData);
+      console.log('[Debug] Extracted context:', context);
     }
+  } catch (error) {
+    console.warn('[Debug] Could not extract context:', error.message);
   }
+  
+  debugInfo.extractedContext = context;
 
-  // Probar endpoints con headers actualizados
+  // Probar endpoints con headers actualizados y contexto correcto
   const testEndpoints = [
     {
       url: `${BIWENGER_BASE_URL}/api/v2/account`,
       name: 'Account',
-      method: 'GET'
+      method: 'GET',
+      useContext: false
     },
     {
       url: `${BIWENGER_BASE_URL}/api/v2/home`,
       name: 'Home',
-      method: 'GET'
+      method: 'GET',
+      useContext: true
     },
     {
-      url: `${BIWENGER_BASE_URL}/api/v2/user/${userId}/leagues`,
-      name: 'User Leagues (with ID)',
-      method: 'GET'
+      url: `${BIWENGER_BASE_URL}/api/v2/market`,
+      name: 'Market',
+      method: 'GET',
+      useContext: true
     },
     {
-      url: `${BIWENGER_BASE_URL}/api/v2/leagues`,
-      name: 'Leagues (POST)',
-      method: 'POST',
-      body: JSON.stringify({ action: 'list' })
+      url: `${BIWENGER_BASE_URL}/api/v2/user/${context?.leagueUserId}/leagues`,
+      name: 'User Leagues (with League User ID)',
+      method: 'GET',
+      useContext: true
     }
   ];
 
@@ -497,7 +613,11 @@ async function handleDebugLeagues(req, res, cookies) {
       const fetchOptions = {
         method: endpoint.method || 'GET',
         headers: {
-          ...getBaseHeaders(token, userId),
+          ...getBaseHeaders(
+            token, 
+            endpoint.useContext && context ? context.leagueUserId : null,
+            endpoint.useContext && context ? context.leagueId : null
+          ),
           'Cookie': buildCookieString(cookies)
         }
       };
