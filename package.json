@@ -5,8 +5,8 @@
   "main": "index.html",
   "scripts": {
     "build": "echo 'Static site - no build needed'",
-    "start": "echo 'Static site'",
-    "dev": "echo 'Use netlify dev for local development'"
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
   },
   "keywords": ["biwenger", "fantasy", "football", "analytics"],
   "author": "Tu nombre",
