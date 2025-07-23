@@ -1,11 +1,11 @@
 // Función API para Biwenger Intelligence Panel - Vercel
-// Compatible con Vercel Edge Runtime - Versión Mejorada
+// Compatible con Vercel Edge Runtime - Versión Actualizada para resolver "Old version"
 
 // Configuración de endpoints de Biwenger
 const BIWENGER_BASE_URL = 'https://biwenger.as.com';
 const BIWENGER_API_URL = 'https://cf.biwenger.com';
 
-// Headers base mejorados para todas las peticiones
+// Headers actualizados para evitar el error "Old version"
 const getBaseHeaders = (token = null, additionalHeaders = {}) => {
   const baseHeaders = {
     'Content-Type': 'application/json',
@@ -21,16 +21,16 @@ const getBaseHeaders = (token = null, additionalHeaders = {}) => {
     'Sec-Fetch-Dest': 'empty',
     'Sec-Fetch-Mode': 'cors',
     'Sec-Fetch-Site': 'same-origin',
-    'X-Requested-With': 'XMLHttpRequest'
+    'X-Requested-With': 'XMLHttpRequest',
+    // Headers críticos para evitar "Old version"
+    'X-Version': '640', // Versión actualizada
+    'X-Lang': 'es',
+    'X-League': 'la-liga'
   };
 
   // Agregar headers de autenticación si hay token
   if (token) {
     baseHeaders['Authorization'] = `Bearer ${token}`;
-    // Headers adicionales requeridos por Biwenger
-    baseHeaders['X-League'] = 'la-liga';
-    baseHeaders['X-Version'] = '2.0';
-    baseHeaders['X-Lang'] = 'es';
   }
 
   return { ...baseHeaders, ...additionalHeaders };
@@ -109,8 +109,8 @@ export default async function handler(req, res) {
       case '/investigate':
         return await handleInvestigate(req, res, cookies);
 
-      case '/test-headers':
-        return await handleTestHeaders(req, res, cookies);
+      case '/test-versions':
+        return await handleTestVersions(req, res, cookies);
         
       default:
         res.status(404).json({ error: `Endpoint ${path} no encontrado` });
@@ -126,7 +126,87 @@ export default async function handler(req, res) {
   }
 }
 
-// Manejar login con mejor gestión de cookies
+// Test diferentes versiones para encontrar la correcta
+async function handleTestVersions(req, res, cookies) {
+  const token = cookies.bw_token;
+  
+  if (!token) {
+    return res.status(401).json({ error: 'No autenticado - token no encontrado' });
+  }
+
+  console.log('[TestVersions] Testing different version headers');
+  
+  // Diferentes versiones a probar
+  const versions = ['640', '630', '620', '610', '600', '590', '580', '2.0', '3.0', '4.0'];
+  const results = [];
+
+  for (const version of versions) {
+    try {
+      const response = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://biwenger.as.com/',
+          'Origin': 'https://biwenger.as.com',
+          'X-Version': version,
+          'X-Lang': 'es',
+          'X-League': 'la-liga',
+          'Cookie': buildCookieString(cookies)
+        }
+      });
+
+      const result = {
+        version: version,
+        status: response.status,
+        ok: response.ok,
+        statusText: response.statusText
+      };
+
+      if (response.ok) {
+        try {
+          result.data = await response.json();
+          result.success = true;
+        } catch (parseError) {
+          result.parseError = parseError.message;
+        }
+      } else {
+        try {
+          const errorText = await response.text();
+          result.error = errorText;
+        } catch (textError) {
+          result.error = `Cannot read error: ${textError.message}`;
+        }
+      }
+
+      results.push(result);
+      
+      // Si encontramos una versión que funciona, podemos parar
+      if (response.ok) {
+        console.log(`[TestVersions] Found working version: ${version}`);
+        break;
+      }
+    } catch (error) {
+      results.push({
+        version: version,
+        error: error.message
+      });
+    }
+  }
+
+  res.status(200).json({
+    timestamp: new Date().toISOString(),
+    message: 'Version testing results',
+    results: results,
+    recommendation: results.find(r => r.success) ? 
+      `Use version: ${results.find(r => r.success).version}` : 
+      'No working version found - may need different approach'
+  });
+}
+
+// Manejar login
 async function handleLogin(req, res, body) {
   console.log('[Login] Starting login process');
   
@@ -201,104 +281,16 @@ async function handleLogin(req, res, body) {
   }
 }
 
-// Test mejorado de headers
-async function handleTestHeaders(req, res, cookies) {
-  const token = cookies.bw_token;
-  
-  if (!token) {
-    return res.status(401).json({ error: 'No autenticado - token no encontrado' });
-  }
-
-  try {
-    console.log('[TestHeaders] Testing different header combinations');
-    
-    const testConfigurations = [
-      {
-        name: 'Config 1 - Headers básicos',
-        headers: getBaseHeaders(token)
-      },
-      {
-        name: 'Config 2 - Con cookies',
-        headers: {
-          ...getBaseHeaders(token),
-          'Cookie': buildCookieString(cookies)
-        }
-      },
-      {
-        name: 'Config 3 - Headers alternativos',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Referer': 'https://biwenger.as.com/',
-          'Origin': 'https://biwenger.as.com',
-          'x-league': 'la-liga',
-          'x-version': '2.0',
-          'x-lang': 'es'
-        }
-      }
-    ];
-
-    const results = [];
-
-    for (const config of testConfigurations) {
-      try {
-        console.log(`[TestHeaders] Testing: ${config.name}`);
-        
-        const response = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
-          method: 'GET',
-          headers: config.headers
-        });
-
-        const result = {
-          config: config.name,
-          status: response.status,
-          ok: response.ok,
-          statusText: response.statusText,
-          headers: Object.fromEntries(response.headers.entries())
-        };
-
-        if (response.ok) {
-          result.data = await response.json();
-        } else {
-          result.errorText = await response.text();
-        }
-
-        results.push(result);
-      } catch (error) {
-        results.push({
-          config: config.name,
-          error: error.message
-        });
-      }
-    }
-
-    res.status(200).json({
-      token: `${token.substring(0, 20)}...`,
-      cookies: Object.keys(cookies),
-      results: results
-    });
-  } catch (error) {
-    console.error('[TestHeaders Error]:', error);
-    res.status(500).json({ 
-      error: 'Error en test de headers',
-      details: error.message
-    });
-  }
-}
-
-// Obtener datos del usuario con headers mejorados
+// Obtener datos del usuario con headers actualizados
 async function handleGetMyData(req, res, cookies) {
   const token = cookies.bw_token;
-  const userId = cookies.bw_user;
   
   if (!token) {
     return res.status(401).json({ error: 'No autenticado - token no encontrado' });
   }
 
   try {
-    console.log('[GetMyData] Fetching user data');
+    console.log('[GetMyData] Fetching user data with updated headers');
     
     const response = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
       method: 'GET',
@@ -361,7 +353,7 @@ async function handleGetPlayers(req, res) {
   }
 }
 
-// Obtener mercado con headers mejorados
+// Obtener mercado con headers actualizados
 async function handleGetMarket(req, res, cookies) {
   const token = cookies.bw_token;
   
@@ -401,7 +393,7 @@ async function handleGetMarket(req, res, cookies) {
   }
 }
 
-// Función de debug mejorada
+// Función de debug actualizada
 async function handleDebugLeagues(req, res, cookies) {
   const token = cookies.bw_token;
   
@@ -418,7 +410,7 @@ async function handleDebugLeagues(req, res, cookies) {
     return res.status(200).json(debugInfo);
   }
 
-  // Probar múltiples endpoints con diferentes configuraciones
+  // Probar endpoints con headers actualizados
   const testEndpoints = [
     {
       url: `${BIWENGER_BASE_URL}/api/v2/account`,
@@ -483,7 +475,7 @@ async function handleDebugLeagues(req, res, cookies) {
   res.status(200).json(debugInfo);
 }
 
-// Función de investigación mejorada
+// Función de investigación
 async function handleInvestigate(req, res, cookies) {
   const token = cookies.bw_token;
   
