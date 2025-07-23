@@ -404,6 +404,11 @@ async function handleGetMyTeam(req, res, cookies) {
     
     // Intentar obtener datos del equipo desde diferentes endpoints
     const teamEndpoints = [
+      `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}/user/${context.leagueUserId}/players`,
+      `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}/user/${context.leagueUserId}/squad`,
+      `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}/squads/${context.leagueUserId}`,
+      `${BIWENGER_BASE_URL}/api/v2/user/${context.leagueUserId}/players`,
+      `${BIWENGER_BASE_URL}/api/v2/user/${context.leagueUserId}/squad`,
       `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}/user/${context.leagueUserId}/team`,
       `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}/user/${context.leagueUserId}`,
       `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}/team`,
