@@ -377,10 +377,22 @@
 
         // Verificar estado de autenticación
         async function checkAuthStatus() {
-            // Esta función ahora solo redirige a la de login si hay un token,
-            // pero la carga de datos se hará después del login.
-            // La lógica de /me requiere leagueId y userId que no tenemos aquí.
-            console.log('Verificando token de sesión...');
+            try {
+                // No podemos saber leagueId/userId aquí, así que simplemente
+                // comprobaremos si hay un token válido. El login es el único
+                // punto de entrada que obtiene todos los datos necesarios.
+                const response = await fetch('/.netlify/functions/api/me?leagueId=0&userId=0');
+                if (response.status === 401) {
+                     console.log('No hay sesión activa.');
+                } else if (response.ok) {
+                    // Si por alguna razón tenemos una sesión válida y podemos obtener datos,
+                    // lo cual es poco probable sin leagueId, lo manejamos.
+                    const userData = await response.json();
+                    handleLoginSuccess(userData);
+                }
+            } catch (error) {
+                console.log('Error verificando estado de autenticación:', error);
+            }
         }
 
         // Manejar login

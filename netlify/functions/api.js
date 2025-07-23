@@ -200,14 +200,7 @@ async function handleLogin(body) {
         'Content-Type': 'application/json',
         'Set-Cookie': cookieOptions,
       },
-      body: JSON.stringify({
-        success: true,
-        user: {
-          id: userData?.id,
-          name: userData?.name,
-          email: userData?.email
-        }
-      }),
+      body: JSON.stringify(loginData),
     };
   } catch (error) {
     console.error('[Login Error]:', error);
