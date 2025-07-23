@@ -6,7 +6,7 @@ const BIWENGER_BASE_URL = 'https://biwenger.as.com';
 const BIWENGER_API_URL = 'https://cf.biwenger.com';
 
 // Headers actualizados para evitar el error "Old version"
-const getBaseHeaders = (token = null, additionalHeaders = {}) => {
+const getBaseHeaders = (token = null, userId = null, additionalHeaders = {}) => {
   const baseHeaders = {
     'Content-Type': 'application/json',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -31,6 +31,11 @@ const getBaseHeaders = (token = null, additionalHeaders = {}) => {
   // Agregar headers de autenticación si hay token
   if (token) {
     baseHeaders['Authorization'] = `Bearer ${token}`;
+  }
+
+  // Agregar X-User si tenemos userId
+  if (userId) {
+    baseHeaders['X-User'] = userId;
   }
 
   return { ...baseHeaders, ...additionalHeaders };
@@ -284,6 +289,7 @@ async function handleLogin(req, res, body) {
 // Obtener datos del usuario con headers actualizados
 async function handleGetMyData(req, res, cookies) {
   const token = cookies.bw_token;
+  const userId = cookies.bw_user;
   
   if (!token) {
     return res.status(401).json({ error: 'No autenticado - token no encontrado' });
@@ -292,24 +298,51 @@ async function handleGetMyData(req, res, cookies) {
   try {
     console.log('[GetMyData] Fetching user data with updated headers');
     
-    const response = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
+    // Primero intentar obtener datos desde /api/v2/account
+    const accountResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
       method: 'GET',
       headers: {
-        ...getBaseHeaders(token),
+        ...getBaseHeaders(token, userId),
         'Cookie': buildCookieString(cookies)
       }
     });
 
-    console.log('[GetMyData] Response status:', response.status);
-
-    if (response.ok) {
-      const data = await response.json();
-      res.status(200).json(data);
+    if (accountResponse.ok) {
+      const accountData = await accountResponse.json();
+      
+      // Extraer userId si no lo tenemos
+      const realUserId = userId || accountData.data?.account?.id;
+      
+      // Intentar obtener más datos desde /api/v2/home
+      try {
+        const homeResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/home`, {
+          method: 'GET',
+          headers: {
+            ...getBaseHeaders(token, realUserId),
+            'Cookie': buildCookieString(cookies)
+          }
+        });
+        
+        if (homeResponse.ok) {
+          const homeData = await homeResponse.json();
+          // Combinar datos de account y home
+          res.status(200).json({
+            account: accountData,
+            home: homeData
+          });
+        } else {
+          // Solo devolver datos de account si home falla
+          res.status(200).json(accountData);
+        }
+      } catch (homeError) {
+        console.warn('[GetMyData] Home endpoint failed:', homeError.message);
+        res.status(200).json(accountData);
+      }
     } else {
-      const errorText = await response.text();
+      const errorText = await accountResponse.text();
       console.error('[GetMyData] Error:', errorText);
-      res.status(response.status).json({ 
-        error: `Error ${response.status}`,
+      res.status(accountResponse.status).json({ 
+        error: `Error ${accountResponse.status}`,
         details: errorText
       });
     }
@@ -356,6 +389,7 @@ async function handleGetPlayers(req, res) {
 // Obtener mercado con headers actualizados
 async function handleGetMarket(req, res, cookies) {
   const token = cookies.bw_token;
+  const userId = cookies.bw_user;
   
   if (!token) {
     return res.status(401).json({ error: 'No autenticado' });
@@ -367,7 +401,7 @@ async function handleGetMarket(req, res, cookies) {
     const response = await fetch(`${BIWENGER_BASE_URL}/api/v2/market`, {
       method: 'GET',
       headers: {
-        ...getBaseHeaders(token),
+        ...getBaseHeaders(token, userId),
         'Cookie': buildCookieString(cookies)
       }
     });
@@ -410,35 +444,69 @@ async function handleDebugLeagues(req, res, cookies) {
     return res.status(200).json(debugInfo);
   }
 
-  // Probar endpoints con headers actualizados
-  const testEndpoints = [
-    {
-      url: `${BIWENGER_BASE_URL}/api/v2/account`,
-      name: 'Account'
-    },
-    {
-      url: `${BIWENGER_BASE_URL}/api/v2/home`,
-      name: 'Home'
-    },
-    {
-      url: `${BIWENGER_BASE_URL}/api/v2/leagues`,
-      name: 'Leagues'
-    },
-    {
-      url: `${BIWENGER_BASE_URL}/api/v2/user/leagues`,
-      name: 'User Leagues'
-    }
-  ];
-
-  for (const endpoint of testEndpoints) {
+  // Extraer userId del endpoint account primero
+  let userId = cookies.bw_user;
+  
+  if (!userId) {
     try {
-      const response = await fetch(endpoint.url, {
+      const accountResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
         method: 'GET',
         headers: {
           ...getBaseHeaders(token),
           'Cookie': buildCookieString(cookies)
         }
       });
+      
+      if (accountResponse.ok) {
+        const accountData = await accountResponse.json();
+        userId = accountData.data?.account?.id;
+        console.log('[Debug] Extracted userId:', userId);
+      }
+    } catch (error) {
+      console.warn('[Debug] Could not extract userId:', error.message);
+    }
+  }
+
+  // Probar endpoints con headers actualizados
+  const testEndpoints = [
+    {
+      url: `${BIWENGER_BASE_URL}/api/v2/account`,
+      name: 'Account',
+      method: 'GET'
+    },
+    {
+      url: `${BIWENGER_BASE_URL}/api/v2/home`,
+      name: 'Home',
+      method: 'GET'
+    },
+    {
+      url: `${BIWENGER_BASE_URL}/api/v2/user/${userId}/leagues`,
+      name: 'User Leagues (with ID)',
+      method: 'GET'
+    },
+    {
+      url: `${BIWENGER_BASE_URL}/api/v2/leagues`,
+      name: 'Leagues (POST)',
+      method: 'POST',
+      body: JSON.stringify({ action: 'list' })
+    }
+  ];
+
+  for (const endpoint of testEndpoints) {
+    try {
+      const fetchOptions = {
+        method: endpoint.method || 'GET',
+        headers: {
+          ...getBaseHeaders(token, userId),
+          'Cookie': buildCookieString(cookies)
+        }
+      };
+      
+      if (endpoint.body) {
+        fetchOptions.body = endpoint.body;
+      }
+      
+      const response = await fetch(endpoint.url, fetchOptions);
 
       const result = {
         endpoint: endpoint.url,
@@ -491,7 +559,7 @@ async function handleInvestigate(req, res, cookies) {
     const response = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
       method: 'GET',
       headers: {
-        ...getBaseHeaders(token),
+        ...getBaseHeaders(token, cookies.bw_user),
         'Cookie': buildCookieString(cookies)
       }
     });
