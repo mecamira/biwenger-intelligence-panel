@@ -301,7 +301,8 @@ async function handleGetMyData(cookies) {
             'Authorization': `Bearer ${token}`,
             'x-league': leagueSlug,
             'x-user': userId,
-            'x-version': '1.0'
+            'x-version': '2.0',
+            'x-lang': 'es'
           },
         });
 
