@@ -1,4 +1,3 @@
-// Función API para Biwenger Intelligence Panel
 // Compatible con Netlify Functions (Node.js 18+)
 
 // Configuración de endpoints de Biwenger
@@ -181,15 +180,50 @@ async function handleLogin(body) {
       };
     }
 
-    // Configurar cookie segura para el token
+    // Obtener información de contexto del usuario
+    let userContext = {};
+    try {
+      const contextResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
+        method: 'GET',
+        headers: {
+          ...getBaseHeaders(),
+          'Authorization': `Bearer ${token}`
+        },
+      });
+
+      if (contextResponse.ok) {
+        const contextData = await contextResponse.json();
+        console.log('[Login] Context data received:', JSON.stringify(contextData, null, 2));
+        
+        // Extraer información de contexto
+        if (contextData.data && contextData.data.user) {
+          userContext.userId = contextData.data.user.id;
+          userContext.userName = contextData.data.user.name;
+        }
+        
+        // Buscar información de liga
+        if (contextData.data && contextData.data.leagues && contextData.data.leagues.length > 0) {
+          const league = contextData.data.leagues[0]; // Tomar la primera liga
+          userContext.leagueId = league.id;
+          userContext.leagueName = league.name;
+          userContext.leagueSlug = league.slug || 'la-liga';
+        }
+      }
+    } catch (contextError) {
+      console.warn('[Login] Could not get context data:', contextError);
+      // Usar valores por defecto
+      userContext = {
+        userId: userData?.id || '',
+        leagueSlug: 'la-liga'
+      };
+    }
+
+    // Configurar cookies seguras
     const cookieOptions = [
-      `bw_token=${token}`,
-      'HttpOnly',
-      'Secure',
-      'SameSite=Strict',
-      'Max-Age=86400', // 24 horas
-      'Path=/'
-    ].join('; ');
+      `bw_token=${token}; HttpOnly; Secure; SameSite=Strict; Max-Age=86400; Path=/`,
+      `bw_user=${userContext.userId || ''}; HttpOnly; Secure; SameSite=Strict; Max-Age=86400; Path=/`,
+      `bw_league=${userContext.leagueSlug || 'la-liga'}; HttpOnly; Secure; SameSite=Strict; Max-Age=86400; Path=/`
+    ];
 
     return {
       statusCode: 200,
@@ -203,7 +237,8 @@ async function handleLogin(body) {
         user: {
           id: userData?.id,
           name: userData?.name,
-          email: userData?.email
+          email: userData?.email,
+          context: userContext
         }
       }),
     };
@@ -226,6 +261,8 @@ async function handleLogin(body) {
 // Obtener datos del usuario actual
 async function handleGetMyData(cookies) {
   const token = cookies.bw_token;
+  const userId = cookies.bw_user;
+  const leagueSlug = cookies.bw_league || 'la-liga';
   
   if (!token) {
     return {
@@ -239,36 +276,71 @@ async function handleGetMyData(cookies) {
   }
 
   try {
-    console.log('[GetMyData] Fetching user data');
+    console.log('[GetMyData] Fetching user data with context:', { userId, leagueSlug });
     
-    const response = await fetch(`${BIWENGER_BASE_URL}/api/v2/home`, {
-      method: 'GET',
-      headers: {
-        ...getBaseHeaders(),
-        'Authorization': `Bearer ${token}`,
-        'x-league': 'la-liga',
-        'x-user': cookies.bw_user || '',
-        'x-version': '1.0'
-      },
-    });
+    // Probar múltiples endpoints para obtener datos
+    const endpoints = [
+      `${BIWENGER_BASE_URL}/api/v2/home`,
+      `${BIWENGER_BASE_URL}/api/v2/account`,
+      `${BIWENGER_BASE_URL}/api/v2/user/${userId}`
+    ];
 
-    console.log('[GetMyData] Response status:', response.status);
+    let successfulResponse = null;
+    
+    for (const endpoint of endpoints) {
+      try {
+        console.log('[GetMyData] Trying endpoint:', endpoint);
+        
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          headers: {
+            ...getBaseHeaders(),
+            'Authorization': `Bearer ${token}`,
+            'x-league': leagueSlug,
+            'x-user': userId,
+            'x-version': '1.0'
+          },
+        });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[GetMyData] Error:', errorText);
+        console.log('[GetMyData] Response status for', endpoint, ':', response.status);
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[GetMyData] Success with endpoint:', endpoint);
+          successfulResponse = {
+            statusCode: 200,
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+          };
+          break;
+        } else {
+          const errorText = await response.text();
+          console.log('[GetMyData] Error with endpoint:', endpoint, errorText);
+        }
+      } catch (endpointError) {
+        console.log('[GetMyData] Exception with endpoint:', endpoint, endpointError.message);
+      }
     }
 
-    const data = await response.json();
-    
-    return {
-      statusCode: response.ok ? 200 : response.status,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    };
+    if (successfulResponse) {
+      return successfulResponse;
+    } else {
+      return {
+        statusCode: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          error: 'No se pudieron obtener datos del usuario desde ningún endpoint',
+          attempted: endpoints
+        }),
+      };
+    }
+
   } catch (error) {
     console.error('[Get My Data Error]:', error);
     return {
@@ -326,6 +398,8 @@ async function handleGetPlayers() {
 // Obtener mercado
 async function handleGetMarket(cookies) {
   const token = cookies.bw_token;
+  const userId = cookies.bw_user;
+  const leagueSlug = cookies.bw_league || 'la-liga';
   
   if (!token) {
     return {
@@ -346,8 +420,8 @@ async function handleGetMarket(cookies) {
       headers: {
         ...getBaseHeaders(),
         'Authorization': `Bearer ${token}`,
-        'x-league': 'la-liga',
-        'x-user': cookies.bw_user || '',
+        'x-league': leagueSlug,
+        'x-user': userId,
         'x-version': '1.0'
       },
     });
@@ -383,6 +457,8 @@ async function handleGetMarket(cookies) {
 // Obtener datos de un usuario específico
 async function handleGetUser(cookies, userId) {
   const token = cookies.bw_token;
+  const currentUserId = cookies.bw_user;
+  const leagueSlug = cookies.bw_league || 'la-liga';
   
   if (!token) {
     return {
@@ -414,8 +490,8 @@ async function handleGetUser(cookies, userId) {
       headers: {
         ...getBaseHeaders(),
         'Authorization': `Bearer ${token}`,
-        'x-league': 'la-liga',
-        'x-user': cookies.bw_user || '',
+        'x-league': leagueSlug,
+        'x-user': currentUserId,
         'x-version': '1.0'
       },
     });
