@@ -190,7 +190,7 @@ async function handleLogin(req, res, body) {
     // Setear múltiples cookies
     res.setHeader('Set-Cookie', [
       `bw_token=${token}; HttpOnly; Secure; SameSite=Strict; Max-Age=86400; Path=/`,
-      `bw_user=${userContext.userId || ''}; HttpOnly; Secure; SameSite=Strict; Max-Age=86400; Path=/`,
+      `bw_user=${userData?.id || ''}; HttpOnly; Secure; SameSite=Strict; Max-Age=86400; Path=/`,
       `bw_league=${userContext.leagueSlug || 'la-liga'}; HttpOnly; Secure; SameSite=Strict; Max-Age=86400; Path=/`
     ]);
 
@@ -416,12 +416,14 @@ async function handleInvestigate(req, res, cookies) {
 
   try {
     const response = await fetch('https://biwenger.as.com/api/v2/account', {
-      headers: { 
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'x-version': '2.0',
-        'x-lang': 'es'
-      }
+        headers: { 
+            ...getBaseHeaders(),
+            'Authorization': `Bearer ${token}`,
+            'x-league': 'la-liga',
+            'x-user': cookies.bw_user || '',
+            'x-version': '2.0',
+            'x-lang': 'es'
+        }
     });
 
     let data;
