@@ -451,7 +451,10 @@ async function handleGetMyTeam(req, res, cookies) {
         ...teamData,
         context: context,
         endpoint: successfulEndpoint,
-        accountData: accountData.data // Incluir datos de account como respaldo
+        accountData: accountData.data,
+        // DEBUG: Añadir información de todos los endpoints probados
+        debugEndpoints: teamEndpoints,
+        testedEndpoints: teamEndpoints.map(url => `Probado: ${url}`)
       });
     } else {
       // Si no se pudo obtener datos del equipo, devolver lo que tenemos del account
