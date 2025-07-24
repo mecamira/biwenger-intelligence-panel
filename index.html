@@ -495,6 +495,197 @@
             margin-bottom: 5px;
         }
 
+        /* Estilos específicos para Rivales */
+        .rivals-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .rival-card {
+            background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+            border-radius: 16px;
+            padding: 20px;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .rival-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.1);
+            border-color: #2a5298;
+        }
+
+        .rival-card.current-user {
+            background: linear-gradient(135deg, #e8f5e8 0%, #d4edda 100%);
+            border-color: #4CAF50;
+            position: relative;
+        }
+
+        .rival-card.current-user::before {
+            content: '👤 TÚ';
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            background: #4CAF50;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+
+        .rival-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .rival-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 1.2rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .rival-info h4 {
+            margin: 0 0 5px 0;
+            font-size: 1.1rem;
+            color: #333;
+        }
+
+        .rival-info p {
+            margin: 0;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .rival-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .rival-stat {
+            text-align: center;
+            padding: 8px;
+            background: rgba(42, 82, 152, 0.05);
+            border-radius: 8px;
+        }
+
+        .rival-stat-value {
+            font-weight: bold;
+            font-size: 1rem;
+            color: #2a5298;
+            margin-bottom: 2px;
+        }
+
+        .rival-stat-label {
+            font-size: 0.7rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .rival-position {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: linear-gradient(45deg, #FF9800, #F57C00);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .rival-position.top3 {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+        }
+
+        .rival-position.bottom3 {
+            background: linear-gradient(45deg, #f44336, #d32f2f);
+        }
+
+        .league-standings {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .standings-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .standings-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .standings-table th,
+        .standings-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .standings-table th {
+            background: rgba(255, 255, 255, 0.1);
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+        }
+
+        .standings-table tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .standings-table .current-user-row {
+            background: rgba(76, 175, 80, 0.2);
+            font-weight: bold;
+        }
+
+        .position-indicator {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .position-indicator.top3 {
+            background: #4CAF50;
+        }
+
+        .position-indicator.bottom3 {
+            background: #f44336;
+        }
+
         .search-bar {
             width: 100%;
             padding: 12px 20px;
@@ -552,6 +743,10 @@
                 grid-template-columns: 1fr;
             }
             
+            .rivals-grid {
+                grid-template-columns: 1fr;
+            }
+            
             .nav-tabs {
                 flex-direction: column;
             }
@@ -564,6 +759,15 @@
                 flex-direction: column;
                 gap: 15px;
                 text-align: center;
+            }
+            
+            .standings-table {
+                font-size: 0.8rem;
+            }
+            
+            .standings-table th,
+            .standings-table td {
+                padding: 8px 6px;
             }
         }
     </style>
@@ -637,6 +841,7 @@
             <div class="nav-tabs">
                 <button class="nav-tab active" onclick="showTab('overview')">📊 Panel Principal</button>
                 <button class="nav-tab" onclick="showTab('my-team')">⚽ Mi Equipo</button>
+                <button class="nav-tab" onclick="showTab('rivals')">🏆 Rivales</button>
                 <button class="nav-tab" onclick="showTab('market')">🛒 Mercado</button>
                 <button class="nav-tab" onclick="showTab('players')">👥 Base de Datos</button>
                 <button class="nav-tab" onclick="showTab('board')">📋 Tablón</button>
@@ -1501,6 +1706,8 @@
                 loadAllPlayers();
             } else if (tabName === 'my-team') {
                 loadMyTeam();
+            } else if (tabName === 'rivals') {
+                loadRivals();
             }
         }
         // Cargar rivales
@@ -1534,18 +1741,198 @@
             const rivalsDiv = document.getElementById('rivalsContent');
             if (!rivalsDiv) return;
 
+            console.log('[DisplayRivals] Processing data:', data);
+
+            // Extraer información de usuarios de la liga
+            let users = [];
+            let leagueInfo = null;
+            let currentUserId = null;
+
+            // Intentar extraer usuarios desde diferentes estructuras posibles
+            if (data.data?.users) {
+                users = data.data.users;
+                leagueInfo = {
+                    name: data.data.name || 'Liga Florentina',
+                    mode: data.data.mode || 'league',
+                    totalUsers: data.data.users.length
+                };
+            } else if (data.data?.data?.users) {
+                users = data.data.data.users;
+                leagueInfo = {
+                    name: data.data.data.name || 'Liga',
+                    mode: data.data.data.mode || 'league',
+                    totalUsers: data.data.data.users.length
+                };
+            } else if (data.home?.data?.league?.users) {
+                users = data.home.data.league.users;
+                leagueInfo = {
+                    name: data.home.data.league.name || 'Liga',
+                    mode: data.home.data.league.mode || 'league',
+                    totalUsers: data.home.data.league.users.length
+                };
+            }
+
+            // Obtener ID del usuario actual desde el contexto
+            if (data.context?.leagueUserId) {
+                currentUserId = data.context.leagueUserId;
+            }
+
+            if (users.length === 0) {
+                rivalsDiv.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #666;">
+                        <h3>🔍 No se encontraron usuarios en la liga</h3>
+                        <p>Verifica que tengas acceso a la información de la liga.</p>
+                        <details style="margin-top: 20px; text-align: left;">
+                            <summary style="cursor: pointer; font-weight: bold;">Ver datos de depuración</summary>
+                            <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px; font-size: 0.8rem; overflow: auto; max-height: 300px;">
+    ${JSON.stringify(data, null, 2)}
+                            </pre>
+                        </details>
+                    </div>
+                `;
+                return;
+            }
+
+            // Ordenar usuarios por puntos (descendente) y asignar posiciones
+            const sortedUsers = [...users].sort((a, b) => (b.points || 0) - (a.points || 0));
+            sortedUsers.forEach((user, index) => {
+                user.position = index + 1;
+            });
+
+            // Crear clasificación con tabla
+            const standingsHTML = createStandingsTable(sortedUsers, currentUserId, leagueInfo);
+
+            // Crear tarjetas de rivales
+            const rivalsHTML = createRivalsCards(sortedUsers, currentUserId);
+
             rivalsDiv.innerHTML = `
-                <div style="text-align: center; padding: 40px;">
-                    <h3>🔍 Analizando datos de rivales...</h3>
-                    <p>Endpoint funcionando correctamente</p>
-                    <details style="margin-top: 20px; text-align: left;">
-                        <summary style="cursor: pointer; font-weight: bold;">Ver datos recibidos</summary>
-                        <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px; font-size: 0.8rem; overflow: auto;">
-        ${JSON.stringify(data, null, 2).substring(0, 2000)}...
-                        </pre>
-                    </details>
+                ${standingsHTML}
+                <div class="card">
+                    <h3>📋 Análisis Detallado de Rivales</h3>
+                    <div class="rivals-grid">
+                        ${rivalsHTML}
+                    </div>
                 </div>
             `;
+        }
+
+        // Crear tabla de clasificación
+        function createStandingsTable(users, currentUserId, leagueInfo) {
+            const tableRows = users.map(user => {
+                const isCurrentUser = user.id === currentUserId;
+                const positionClass = user.position <= 3 ? 'top3' : 
+                                    user.position > users.length - 3 ? 'bottom3' : '';
+                
+                return `
+                    <tr class="${isCurrentUser ? 'current-user-row' : ''}">
+                        <td>
+                            <span class="position-indicator ${positionClass}">${user.position}</span>
+                            ${user.name}${isCurrentUser ? ' 👤' : ''}
+                        </td>
+                        <td>${user.points || 0}</td>
+                        <td>${formatMoney(user.balance || 0)}</td>
+                        <td>${getLastAccessTime(user.lastAccess)}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            return `
+                <div class="league-standings">
+                    <div class="standings-title">
+                        🏆 ${leagueInfo?.name || 'Clasificación de Liga'}
+                        <div style="font-size: 0.9rem; margin-top: 5px; opacity: 0.9;">
+                            ${leagueInfo?.totalUsers || users.length} participantes • Modo: ${leagueInfo?.mode || 'Liga'}
+                        </div>
+                    </div>
+                    <table class="standings-table">
+                        <thead>
+                            <tr>
+                                <th>Equipo</th>
+                                <th>Puntos</th>
+                                <th>Balance</th>
+                                <th>Última conexión</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tableRows}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // Crear tarjetas de rivales
+        function createRivalsCards(users, currentUserId) {
+            return users.map(user => {
+                const isCurrentUser = user.id === currentUserId;
+                const positionClass = user.position <= 3 ? 'top3' : 
+                                    user.position > users.length - 3 ? 'bottom3' : '';
+                
+                return `
+                    <div class="rival-card ${isCurrentUser ? 'current-user' : ''}">
+                        <div class="rival-header">
+                            <div class="rival-avatar">
+                                ${user.name ? user.name.charAt(0).toUpperCase() : '👤'}
+                            </div>
+                            <div class="rival-info">
+                                <h4>${user.name || 'Usuario'}</h4>
+                                <p>${user.role === 'manager' ? '👑 Manager' : '👥 Participante'}</p>
+                            </div>
+                        </div>
+                        
+                        <div class="rival-stats">
+                            <div class="rival-stat">
+                                <div class="rival-stat-value">${user.points || 0}</div>
+                                <div class="rival-stat-label">Puntos</div>
+                            </div>
+                            <div class="rival-stat">
+                                <div class="rival-stat-value">${formatMoney(user.balance || 0)}</div>
+                                <div class="rival-stat-label">Balance</div>
+                            </div>
+                            <div class="rival-stat">
+                                <div class="rival-stat-value">${calculateDaysAgo(user.lastAccess)}d</div>
+                                <div class="rival-stat-label">Actividad</div>
+                            </div>
+                        </div>
+                        
+                        <div style="text-align: center;">
+                            <span class="rival-position ${positionClass}">
+                                ${user.position <= 3 ? '🏅' : user.position > users.length - 3 ? '🔴' : '🟡'} 
+                                ${user.position}º posición
+                            </span>
+                        </div>
+                        
+                        ${user.joinDate ? `
+                            <div style="margin-top: 15px; font-size: 0.8rem; color: #666; text-align: center;">
+                                📅 Desde: ${new Date(user.joinDate * 1000).toLocaleDateString('es-ES')}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Función auxiliar para formatear última conexión
+        function getLastAccessTime(timestamp) {
+            if (!timestamp) return 'Nunca';
+            
+            const now = Math.floor(Date.now() / 1000);
+            const diffDays = Math.floor((now - timestamp) / 86400);
+            
+            if (diffDays === 0) return 'Hoy';
+            if (diffDays === 1) return 'Ayer';
+            if (diffDays < 7) return `Hace ${diffDays} días`;
+            if (diffDays < 30) return `Hace ${Math.floor(diffDays / 7)} semanas`;
+            return `Hace ${Math.floor(diffDays / 30)} meses`;
+        }
+
+        // Función auxiliar para calcular días desde última actividad
+        function calculateDaysAgo(timestamp) {
+            if (!timestamp) return '∞';
+            
+            const now = Math.floor(Date.now() / 1000);
+            const diffDays = Math.floor((now - timestamp) / 86400);
+            return diffDays;
         }
 
         // Cerrar sesión
