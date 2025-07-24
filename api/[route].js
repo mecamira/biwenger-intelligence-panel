@@ -362,7 +362,7 @@ async function handleGetLeagueContext(req, res, cookies) {
   }
 }
 
-// Obtener mi equipo con formación y jugadores
+// Obtener mi equipo con formación y jugadores - VERSIÓN CORREGIDA
 async function handleGetMyTeam(req, res, cookies) {
   const token = cookies.bw_token;
   
@@ -371,7 +371,7 @@ async function handleGetMyTeam(req, res, cookies) {
   }
 
   try {
-    console.log('[GetMyTeam] Fetching team data with correct context');
+    console.log('[GetMyTeam] Fetching team data with correct Biwenger field expansion');
     
     // Primero obtener contexto de liga
     const accountResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
@@ -402,21 +402,13 @@ async function handleGetMyTeam(req, res, cookies) {
       leagueId: context.leagueId 
     });
     
-    // Intentar obtener datos del equipo desde diferentes endpoints
+    // ENDPOINTS CORREGIDOS - Usando patrón de expansión de campos de Biwenger
     const teamEndpoints = [
-      `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}/user/${context.leagueUserId}/players`,
-      `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}/user/${context.leagueUserId}/squad`,
-      `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}/squads/${context.leagueUserId}`,
-      `${BIWENGER_BASE_URL}/api/v2/user/${context.leagueUserId}/players`,
-      `${BIWENGER_BASE_URL}/api/v2/user/${context.leagueUserId}/squad`,
-      `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}/user/${context.leagueUserId}/team`,
-      `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}/user/${context.leagueUserId}`,
-      `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}/team`,
-      `${BIWENGER_BASE_URL}/api/v2/user/${context.leagueUserId}/team`,
-      `${BIWENGER_BASE_URL}/api/v2/team`,
-      `${BIWENGER_BASE_URL}/api/v2/user/${context.leagueUserId}`,
-      `${BIWENGER_BASE_URL}/api/v2/lineup`,
-      `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}/lineup`
+      `${BIWENGER_BASE_URL}/api/v2/user?fields=*,lineup(type,playersID),players(*,fitness,team,owner),market(*,-userID),offers,-trophies`,
+      `${BIWENGER_BASE_URL}/api/v2/user/${context.leagueUserId}?fields=*,account(id),players(id,owner),lineups(round,points,count,position),league(id,name,competition,mode,scoreID),market,seasons,offers,lastPositions`,
+      `${BIWENGER_BASE_URL}/api/v2/user?fields=*,players(*,fitness,team,owner),lineup`,
+      `${BIWENGER_BASE_URL}/api/v2/competitions/la-liga/data?lang=es&score=2`,
+      `${BIWENGER_BASE_URL}/api/v2/user/${context.leagueUserId}?fields=*,players(*,owner)`
     ];
 
     let teamData = null;
@@ -424,12 +416,13 @@ async function handleGetMyTeam(req, res, cookies) {
 
     for (const endpoint of teamEndpoints) {
       try {
-        console.log(`[GetMyTeam] Trying endpoint: ${endpoint}`);
+        console.log(`[GetMyTeam] Trying Biwenger field expansion endpoint: ${endpoint}`);
         
         const response = await fetch(endpoint, {
           method: 'GET',
           headers: {
             ...getBaseHeaders(token, context.leagueUserId, context.leagueId),
+            'Referer': 'https://biwenger.as.com/players', // Header específico para players
             'Cookie': buildCookieString(cookies)
           }
         });
@@ -439,9 +432,16 @@ async function handleGetMyTeam(req, res, cookies) {
         if (response.ok) {
           const data = await response.json();
           console.log(`[GetMyTeam] Success with endpoint: ${endpoint}`);
-          teamData = data;
-          successfulEndpoint = endpoint;
-          break;
+          
+          // Verificar si contiene datos de jugadores
+          if (data.data?.players || data.data?.data?.players) {
+            teamData = data;
+            successfulEndpoint = endpoint;
+            console.log(`[GetMyTeam] Found ${data.data?.players?.length || data.data?.data?.players?.length || 0} players in response`);
+            break;
+          } else {
+            console.log(`[GetMyTeam] Endpoint returned data but no players array`);
+          }
         } else {
           const errorText = await response.text();
           console.log(`[GetMyTeam] Error with ${endpoint}:`, errorText);
@@ -456,15 +456,12 @@ async function handleGetMyTeam(req, res, cookies) {
         ...teamData,
         context: context,
         endpoint: successfulEndpoint,
-        accountData: accountData.data,
-        // DEBUG: Añadir información de todos los endpoints probados
-        debugEndpoints: teamEndpoints,
-        testedEndpoints: teamEndpoints.map(url => `Probado: ${url}`)
+        accountData: accountData.data // Incluir datos de account como respaldo
       });
     } else {
       // Si no se pudo obtener datos del equipo, devolver lo que tenemos del account
       res.status(200).json({
-        message: 'No se pudieron obtener datos específicos del equipo, mostrando datos disponibles',
+        message: 'No se pudieron obtener datos específicos del equipo con field expansion, mostrando datos disponibles',
         context: context,
         accountData: accountData.data,
         attempted: teamEndpoints

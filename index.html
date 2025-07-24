@@ -1019,6 +1019,7 @@
                     const response = await fetch('/api/my-team');
                     if (response.ok) {
                         myTeamData = await response.json();
+                        console.log('[LoadMyTeam] Received data:', myTeamData);
                     } else {
                         throw new Error('Error cargando equipo');
                     }
@@ -1032,21 +1033,40 @@
             }
         }
 
-        // Mostrar mi equipo
+        // Mostrar mi equipo - FUNCIÓN CORREGIDA
         function displayMyTeam(data, filter = 'all') {
             const teamDiv = document.getElementById('myTeamPlayers');
             teamDiv.innerHTML = '';
 
-            // Primero intentar obtener jugadores desde diferentes fuentes
+            console.log('[DisplayMyTeam] Processing data:', data);
+
+            // Extraer jugadores usando el patrón de Biwenger - CORREGIDO
             let players = [];
             let teamStats = { totalValue: 0, totalPlayers: 0, totalPoints: 0 };
 
-            if (data.data?.team?.players) {
-                // Si tenemos datos específicos del equipo
+            if (data.data?.players) {
+                // Filtrar solo los jugadores que son míos (owner = mi ID)
+                const myUserId = data.context?.leagueUserId;
+                console.log('[DisplayMyTeam] My user ID:', myUserId);
+                console.log('[DisplayMyTeam] Total players in response:', data.data.players.length);
+                
+                players = data.data.players.filter(player => {
+                    const isMyPlayer = player.owner === myUserId || player.owner === parseInt(myUserId);
+                    if (isMyPlayer) {
+                        console.log('[DisplayMyTeam] Found my player:', player.name, 'Owner:', player.owner);
+                    }
+                    return isMyPlayer;
+                });
+                
+                console.log('[DisplayMyTeam] My players found:', players.length);
+            } else if (data.data?.data?.players) {
+                // Estructura anidada alternativa
+                const myUserId = data.context?.leagueUserId;
+                players = data.data.data.players.filter(player => 
+                    player.owner === myUserId || player.owner === parseInt(myUserId)
+                );
+            } else if (data.data?.team?.players) {
                 players = Object.values(data.data.team.players);
-            } else if (data.data?.players) {
-                // Si los datos vienen en formato diferente
-                players = Object.values(data.data.players);
             } else if (data.accountData?.leagues?.[0]) {
                 // Usar datos de la liga como fallback
                 const league = data.accountData.leagues[0];
@@ -1057,7 +1077,10 @@
                         <p>Liga: <strong>${league.name}</strong></p>
                         <p>Balance: <strong>${formatMoney(league.user.balance)}</strong></p>
                         <p style="margin-top: 20px; font-size: 0.9rem; color: #666;">
-                            💡 Si no ves tus jugadores, es posible que necesitemos ajustar la API para obtener los datos del equipo.
+                            💡 Probando endpoints con expansión de campos de Biwenger...
+                        </p>
+                        <p style="font-size: 0.8rem; color: #999;">
+                            Endpoint: ${data.endpoint}
                         </p>
                     </div>
                 `;
@@ -1084,8 +1107,20 @@
             if (players.length === 0) {
                 teamDiv.innerHTML = `
                     <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #666;">
-                        <h3>🔍 ${filter === 'all' ? 'No se encontraron jugadores' : 'No hay jugadores en esta posición'}</h3>
+                        <h3>🔍 ${filter === 'all' ? 'Buscando tus jugadores...' : 'No hay jugadores en esta posición'}</h3>
                         <p>Endpoint utilizado: <strong>${data.endpoint || 'Desconocido'}</strong></p>
+                        <p style="margin-top: 15px; font-size: 0.9rem;">
+                            ${data.data?.players ? 
+                                `Se encontraron ${data.data.players.length} jugadores en total, filtrando por owner ID: ${data.context?.leagueUserId}` :
+                                'No se encontraron datos de jugadores en la respuesta'
+                            }
+                        </p>
+                        <details style="margin-top: 20px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto;">
+                            <summary style="cursor: pointer; font-weight: bold;">Ver datos de debug</summary>
+                            <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px; font-size: 0.8rem; overflow: auto;">
+${JSON.stringify(data, null, 2).substring(0, 1000)}...
+                            </pre>
+                        </details>
                     </div>
                 `;
                 return;
