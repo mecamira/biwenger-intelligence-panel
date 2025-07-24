@@ -1072,15 +1072,39 @@
                     players = players.map(player => {
                         const fullPlayerData = globalPlayersMap[player.id];
                         if (fullPlayerData) {
-                            // Combinar datos: usar los datos completos del jugador global
                             return {
                                 ...fullPlayerData,
-                                // Mantener información específica de mi equipo
                                 myTeamData: player
                             };
                         }
-                        return player; // Si no encuentra datos, devolver lo que tenemos
+                        return player;
                     });
+                    
+                    // También enriquecer los datos separados para alineación y banquillo
+                    if (window.myTeamSeparated) {
+                        window.myTeamSeparated.alineados = window.myTeamSeparated.alineados.map(player => {
+                            const fullPlayerData = globalPlayersMap[player.id];
+                            if (fullPlayerData) {
+                                return {
+                                    ...fullPlayerData,
+                                    myTeamData: player
+                                };
+                            }
+                            return player;
+                        });
+                        
+                        window.myTeamSeparated.banquillo = window.myTeamSeparated.banquillo.map(player => {
+                            const fullPlayerData = globalPlayersMap[player.id];
+                            if (fullPlayerData) {
+                                return {
+                                    ...fullPlayerData,
+                                    myTeamData: player
+                                };
+                            }
+                            return player;
+                        });
+                    }
+                    
                     console.log('[DisplayMyTeam] Players enriched with global data');
                 } else {
                     console.log('[DisplayMyTeam] Global players data not available, loading...');
@@ -1092,7 +1116,7 @@
                         });
                         return;
                     }
-                }                                
+                }                              
             } else if (data.data?.players) {
                 // Fallback: todos los jugadores que tienen owner object
                 players = data.data.players.filter(player => 
