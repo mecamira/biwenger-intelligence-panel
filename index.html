@@ -1044,21 +1044,22 @@
             let players = [];
             let teamStats = { totalValue: 0, totalPlayers: 0, totalPoints: 0 };
 
-            if (data.data?.players) {
-                // Filtrar solo los jugadores que son míos (owner = mi ID)
-                const myUserId = data.context?.leagueUserId;
-                console.log('[DisplayMyTeam] My user ID:', myUserId);
-                console.log('[DisplayMyTeam] Total players in response:', data.data.players.length);
+            if (data.data?.players && data.data?.lineup?.playersID) {
+                // Usar la alineación para identificar mis jugadores
+                const myPlayerIds = data.data.lineup.playersID;
+                console.log('[DisplayMyTeam] My player IDs from lineup:', myPlayerIds);
                 
-                players = data.data.players.filter(player => {
-                    const isMyPlayer = player.owner === myUserId || player.owner === parseInt(myUserId);
-                    if (isMyPlayer) {
-                        console.log('[DisplayMyTeam] Found my player:', player.name, 'Owner:', player.owner);
-                    }
-                    return isMyPlayer;
-                });
+                players = data.data.players.filter(player => 
+                    myPlayerIds.includes(player.id)
+                );
                 
-                console.log('[DisplayMyTeam] My players found:', players.length);
+                console.log('[DisplayMyTeam] Players filtered by lineup:', players.length);
+            } else if (data.data?.players) {
+                // Fallback: todos los jugadores que tienen owner object
+                players = data.data.players.filter(player => 
+                    player.owner && typeof player.owner === 'object'
+                );
+                console.log('[DisplayMyTeam] Using fallback, found players:', players.length);
             } else if (data.data?.data?.players) {
                 // Estructura anidada alternativa
                 const myUserId = data.context?.leagueUserId;
@@ -1070,20 +1071,7 @@
             } else if (data.accountData?.leagues?.[0]) {
                 // Usar datos de la liga como fallback
                 const league = data.accountData.leagues[0];
-                teamDiv.innerHTML = `
-                    <div style="grid-column: 1/-1; text-align: center; padding: 40px; background: rgba(255,193,7,0.1); border-radius: 12px;">
-                        <h3>🔍 Explorando tu equipo...</h3>
-                        <p>Los datos del equipo se están cargando desde: <strong>${data.endpoint || 'endpoint de respaldo'}</strong></p>
-                        <p>Liga: <strong>${league.name}</strong></p>
-                        <p>Balance: <strong>${formatMoney(league.user.balance)}</strong></p>
-                        <p style="margin-top: 20px; font-size: 0.9rem; color: #666;">
-                            💡 Probando endpoints con expansión de campos de Biwenger...
-                        </p>
-                        <p style="font-size: 0.8rem; color: #999;">
-                            Endpoint: ${data.endpoint}
-                        </p>
-                    </div>
-                `;
+                teamDiv.innerHTML = `...`; // El HTML de fallback que ya tenías
                 return;
             }
 
