@@ -1045,15 +1045,27 @@
             let teamStats = { totalValue: 0, totalPlayers: 0, totalPoints: 0 };
 
             if (data.data?.players && data.data?.lineup?.playersID) {
-                // Usar la alineación para identificar mis jugadores
+                // Obtener todos mis jugadores (alineados + banquillo)
                 const myPlayerIds = data.data.lineup.playersID;
-                console.log('[DisplayMyTeam] My player IDs from lineup:', myPlayerIds);
-                
-                players = data.data.players.filter(player => 
-                    myPlayerIds.includes(player.id)
+                const allMyPlayers = data.data.players.filter(player => 
+                    player.owner && typeof player.owner === 'object'
                 );
                 
-                console.log('[DisplayMyTeam] Players filtered by lineup:', players.length);
+                // Separar alineados y banquillo
+                const alineados = allMyPlayers.filter(player => 
+                    myPlayerIds.includes(player.id)
+                );
+                const banquillo = allMyPlayers.filter(player => 
+                    !myPlayerIds.includes(player.id)
+                );
+                
+                console.log('[DisplayMyTeam] Alineados:', alineados.length, 'Banquillo:', banquillo.length);
+                
+                // Combinar todos para las estadísticas
+                players = allMyPlayers;
+                
+                // Guardar separación para mostrar después
+                window.myTeamSeparated = { alineados, banquillo };
                 // Enriquecer datos de jugadores con información de la base de datos global
                 if (allPlayersData?.data?.players) {
                     const globalPlayersMap = allPlayersData.data.players;
@@ -1119,33 +1131,47 @@
                 teamStats.totalPlayers > 0 ? Math.round(teamStats.totalPoints / teamStats.totalPlayers) : 0;
 
             // Mostrar jugadores
+            // Mostrar jugadores separados por alineación y banquillo
             if (players.length === 0) {
                 teamDiv.innerHTML = `
                     <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #666;">
                         <h3>🔍 ${filter === 'all' ? 'Buscando tus jugadores...' : 'No hay jugadores en esta posición'}</h3>
                         <p>Endpoint utilizado: <strong>${data.endpoint || 'Desconocido'}</strong></p>
-                        <p style="margin-top: 15px; font-size: 0.9rem;">
-                            ${data.data?.players ? 
-                                `Se encontraron ${data.data.players.length} jugadores en total, filtrando por owner ID: ${data.context?.leagueUserId}` :
-                                'No se encontraron datos de jugadores en la respuesta'
-                            }
-                        </p>
-                        <details style="margin-top: 20px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto;">
-                            <summary style="cursor: pointer; font-weight: bold;">Ver datos de debug</summary>
-                            <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px; font-size: 0.8rem; overflow: auto;">
-${JSON.stringify(data, null, 2).substring(0, 1000)}...
-                            </pre>
-                        </details>
                     </div>
                 `;
                 return;
             }
 
-            players.forEach(player => {
-                const playerCard = createPlayerCard(player, null, false, true);
-                teamDiv.appendChild(playerCard);
-            });
-        }
+            // Mostrar alineación
+            if (window.myTeamSeparated?.alineados?.length > 0) {
+                const alineacionHeader = document.createElement('div');
+                alineacionHeader.style.cssText = 'grid-column: 1/-1; background: linear-gradient(45deg, #4CAF50, #45a049); color: white; padding: 15px; border-radius: 10px; text-align: center; font-weight: bold; margin-bottom: 10px;';
+                alineacionHeader.innerHTML = '⚽ Alineación (11 jugadores)';
+                teamDiv.appendChild(alineacionHeader);
+                
+                window.myTeamSeparated.alineados.forEach(player => {
+                    if (filter === 'all' || player.position === filter) {
+                        const playerCard = createPlayerCard(player, null, false, true);
+                        teamDiv.appendChild(playerCard);
+                    }
+                });
+            }
+
+            // Mostrar banquillo
+            if (window.myTeamSeparated?.banquillo?.length > 0) {
+                const banquilloHeader = document.createElement('div');
+                banquilloHeader.style.cssText = 'grid-column: 1/-1; background: linear-gradient(45deg, #FF9800, #F57C00); color: white; padding: 15px; border-radius: 10px; text-align: center; font-weight: bold; margin: 20px 0 10px 0;';
+                banquilloHeader.innerHTML = `🪑 Banquillo (${window.myTeamSeparated.banquillo.length} jugadores)`;
+                teamDiv.appendChild(banquilloHeader);
+                
+                window.myTeamSeparated.banquillo.forEach(player => {
+                    if (filter === 'all' || player.position === filter) {
+                        const playerCard = createPlayerCard(player, null, false, true);
+                        playerCard.style.opacity = '0.8'; // Diferencia visual para banquillo
+                        teamDiv.appendChild(playerCard);
+                    }
+                });
+            }
 
         // Cargar mercado
         async function loadMarket() {
