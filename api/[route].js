@@ -838,7 +838,7 @@ async function handleInvestigate(req, res, cookies) {
   }
 }
 
-// Obtener datos de rivales en la liga
+// Obtener datos de rivales en la liga (MEJORADO)
 async function handleGetRivals(req, res, cookies) {
   const token = cookies.bw_token;
   
@@ -847,73 +847,84 @@ async function handleGetRivals(req, res, cookies) {
   }
 
   try {
-    console.log('[GetRivals] Fetching rivals data');
+    console.log('[GetRivals] Fetching rivals data with detailed team info');
     
-    // Obtener contexto de liga
+    // 1. Obtener contexto de liga
     const accountResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
       method: 'GET',
-      headers: {
-        ...getBaseHeaders(token),
-        'Cookie': buildCookieString(cookies)
-      }
+      headers: { ...getBaseHeaders(token), 'Cookie': buildCookieString(cookies) }
     });
 
     if (!accountResponse.ok) {
-      return res.status(accountResponse.status).json({ 
-        error: 'No se pudo obtener contexto de usuario'
-      });
+      return res.status(accountResponse.status).json({ error: 'No se pudo obtener contexto de usuario' });
     }
 
     const accountData = await accountResponse.json();
     const context = extractUserContext(accountData);
     
     if (!context) {
-      return res.status(400).json({ 
-        error: 'No se pudo extraer contexto de liga'
-      });
+      return res.status(400).json({ error: 'No se pudo extraer contexto de liga' });
     }
 
-    // Obtener datos de la liga con todos los usuarios
-    const leagueResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}?fields=*,users(*,account,team)`, {
+    // 2. Obtener datos de la liga con todos los usuarios
+    const leagueUrl = `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}?fields=*,users(*,account,team)`;
+    const leagueResponse = await fetch(leagueUrl, {
       method: 'GET',
-      headers: {
-        ...getBaseHeaders(token, context.leagueUserId, context.leagueId),
-        'Cookie': buildCookieString(cookies)
-      }
+      headers: { ...getBaseHeaders(token, context.leagueUserId, context.leagueId), 'Cookie': buildCookieString(cookies) }
     });
 
-    if (leagueResponse.ok) {
-      const leagueData = await leagueResponse.json();
-      res.status(200).json({
-        ...leagueData,
-        context: context
-      });
-    } else {
-      // Intentar endpoint alternativo
-      const homeResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/home`, {
-        method: 'GET',
-        headers: {
-          ...getBaseHeaders(token, context.leagueUserId, context.leagueId),
-          'Cookie': buildCookieString(cookies)
-        }
-      });
-
-      if (homeResponse.ok) {
-        const homeData = await homeResponse.json();
-        res.status(200).json({
-          ...homeData,
-          context: context,
-          fallback: true
-        });
-      } else {
-        const errorText = await homeResponse.text();
-        res.status(homeResponse.status).json({ 
-          error: `Error ${homeResponse.status}`,
-          details: errorText,
-          context: context
-        });
-      }
+    if (!leagueResponse.ok) {
+      return res.status(leagueResponse.status).json({ error: 'No se pudieron obtener los datos de la liga' });
     }
+
+    const leagueData = await leagueResponse.json();
+    const users = leagueData.data?.users;
+
+    if (!users || users.length === 0) {
+      return res.status(200).json({ ...leagueData, context: context, message: 'No users found in league data' });
+    }
+
+    // 3. (MEJORA) Obtener el equipo detallado de cada rival
+    console.log(`[GetRivals] Found ${users.length} users. Fetching detailed team for each.`);
+    
+    const detailedUsers = await Promise.all(users.map(async (user) => {
+      // Evitar buscar el equipo del manager si no es un participante real
+      if (user.role === 'manager' && !user.points) {
+        return { ...user, detailedTeam: null };
+      }
+      
+      try {
+        // Usamos el ID de usuario de la liga para la consulta
+        const rivalId = user.id; 
+        const teamUrl = `${BIWENGER_BASE_URL}/api/v2/user/${rivalId}?fields=*,players(*,fitness,team,owner),lineup`;
+        
+        const teamResponse = await fetch(teamUrl, {
+          method: 'GET',
+          headers: { ...getBaseHeaders(token, context.leagueUserId, context.leagueId), 'Cookie': buildCookieString(cookies) }
+        });
+
+        if (teamResponse.ok) {
+          const teamData = await teamResponse.json();
+          console.log(`[GetRivals] Successfully fetched team for user ${user.name} (${rivalId})`);
+          return { ...user, detailedTeam: teamData.data };
+        } else {
+          console.warn(`[GetRivals] Failed to fetch team for user ${user.name} (${rivalId}). Status: ${teamResponse.status}`);
+          return { ...user, detailedTeam: null, error: `Failed with status ${teamResponse.status}` };
+        }
+      } catch (error) {
+        console.error(`[GetRivals] Error fetching team for user ${user.name}:`, error.message);
+        return { ...user, detailedTeam: null, error: error.message };
+      }
+    }));
+
+    // Reemplazar los usuarios en los datos de la liga con los usuarios enriquecidos
+    leagueData.data.users = detailedUsers;
+
+    res.status(200).json({
+      ...leagueData,
+      context: context
+    });
+
   } catch (error) {
     console.error('[Get Rivals Error]:', error);
     res.status(500).json({ 

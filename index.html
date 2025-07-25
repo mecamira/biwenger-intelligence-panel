@@ -619,6 +619,130 @@
             background: linear-gradient(45deg, #f44336, #d32f2f);
         }
 
+        /* Estilos para el acordeón de rivales */
+        .rival-card-accordion {
+            background: white;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border: 1px solid #e9ecef;
+        }
+
+        .rival-card-accordion.current-user {
+            border-left: 4px solid #4CAF50;
+        }
+
+        .accordion-header {
+            background: none;
+            border: none;
+            width: 100%;
+            text-align: left;
+            padding: 15px 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1rem;
+        }
+
+        .accordion-header:hover {
+            background: #f8f9fa;
+        }
+
+        .rival-summary {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-grow: 1;
+        }
+
+        .rival-position {
+            font-weight: bold;
+            min-width: 30px;
+        }
+
+        .rival-name {
+            font-weight: 600;
+            flex-grow: 1;
+        }
+
+        .rival-points, .rival-team-value {
+            color: #555;
+            font-size: 0.9rem;
+            min-width: 100px;
+            text-align: right;
+        }
+
+        .accordion-icon {
+            font-size: 1.2rem;
+            transition: transform 0.3s ease;
+        }
+
+        .rival-card-accordion.active .accordion-icon {
+            transform: rotate(180deg);
+        }
+
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            background: #fdfdfd;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .rival-details {
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .rival-team-section h4 {
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            color: #2a5298;
+            border-bottom: 2px solid #2a5298;
+            padding-bottom: 5px;
+        }
+
+        .rival-player-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .rival-player-item {
+            display: grid;
+            grid-template-columns: 3fr 1fr 1fr 1fr;
+            gap: 10px;
+            font-size: 0.9rem;
+            padding: 5px;
+            border-radius: 4px;
+        }
+
+        .rival-player-item:nth-child(odd) {
+            background: #f8f9fa;
+        }
+
+        .rival-player-item .player-name {
+            font-weight: 500;
+        }
+
+        .rival-player-item .player-position {
+            color: #666;
+        }
+
+        .rival-player-item .player-points {
+            font-weight: bold;
+            text-align: right;
+        }
+
+        .rival-player-item .player-price {
+            color: #4CAF50;
+            font-weight: 500;
+            text-align: right;
+        }
+
         .league-standings {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             border-radius: 16px;
@@ -768,6 +892,10 @@
             .standings-table th,
             .standings-table td {
                 padding: 8px 6px;
+            }
+
+            .rival-details {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -1736,84 +1864,140 @@
             }
         }
 
-        // Mostrar rivales
+        // Mostrar rivales (MEJORADO)
         function displayRivals(data) {
             const rivalsDiv = document.getElementById('rivalsContent');
             if (!rivalsDiv) return;
 
-            console.log('[DisplayRivals] Processing data:', data);
+            console.log('[DisplayRivals] Processing data with detailed teams:', data);
 
-            // Extraer información de usuarios de la liga
-            let users = [];
-            let leagueInfo = null;
-            let currentUserId = null;
-
-            // Intentar extraer usuarios desde diferentes estructuras posibles
-            if (data.data?.users) {
-                users = data.data.users;
-                leagueInfo = {
-                    name: data.data.name || 'Liga Florentina',
-                    mode: data.data.mode || 'league',
-                    totalUsers: data.data.users.length
-                };
-            } else if (data.data?.data?.users) {
-                users = data.data.data.users;
-                leagueInfo = {
-                    name: data.data.data.name || 'Liga',
-                    mode: data.data.data.mode || 'league',
-                    totalUsers: data.data.data.users.length
-                };
-            } else if (data.home?.data?.league?.users) {
-                users = data.home.data.league.users;
-                leagueInfo = {
-                    name: data.home.data.league.name || 'Liga',
-                    mode: data.home.data.league.mode || 'league',
-                    totalUsers: data.home.data.league.users.length
-                };
-            }
-
-            // Obtener ID del usuario actual desde el contexto
-            if (data.context?.leagueUserId) {
-                currentUserId = data.context.leagueUserId;
-            }
+            let users = data.data?.users || [];
+            let leagueInfo = {
+                name: data.data?.name || 'Liga',
+                mode: data.data?.mode || 'league',
+                totalUsers: users.length
+            };
+            let currentUserId = data.context?.leagueUserId;
 
             if (users.length === 0) {
-                rivalsDiv.innerHTML = `
-                    <div style="text-align: center; padding: 40px; color: #666;">
-                        <h3>🔍 No se encontraron usuarios en la liga</h3>
-                        <p>Verifica que tengas acceso a la información de la liga.</p>
-                        <details style="margin-top: 20px; text-align: left;">
-                            <summary style="cursor: pointer; font-weight: bold;">Ver datos de depuración</summary>
-                            <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px; font-size: 0.8rem; overflow: auto; max-height: 300px;">
-    ${JSON.stringify(data, null, 2)}
-                            </pre>
-                        </details>
-                    </div>
-                `;
+                rivalsDiv.innerHTML = `<p>No se encontraron usuarios.</p>`;
                 return;
             }
 
-            // Ordenar usuarios por puntos (descendente) y asignar posiciones
+            // Ordenar por puntos y asignar posición
             const sortedUsers = [...users].sort((a, b) => (b.points || 0) - (a.points || 0));
-            sortedUsers.forEach((user, index) => {
-                user.position = index + 1;
-            });
+            sortedUsers.forEach((user, index) => user.position = index + 1);
 
-            // Crear clasificación con tabla
+            // Crear HTML
             const standingsHTML = createStandingsTable(sortedUsers, currentUserId, leagueInfo);
-
-            // Crear tarjetas de rivales
             const rivalsHTML = createRivalsCards(sortedUsers, currentUserId);
 
             rivalsDiv.innerHTML = `
                 ${standingsHTML}
                 <div class="card">
                     <h3>📋 Análisis Detallado de Rivales</h3>
-                    <div class="rivals-grid">
+                    <div id="rivalsAccordion">
                         ${rivalsHTML}
                     </div>
                 </div>
             `;
+            
+            // Añadir listeners para el acordeón
+            addAccordionListeners();
+        }
+
+        // Crear tarjetas de rivales con acordeón (MEJORADO)
+        function createRivalsCards(users, currentUserId) {
+            return users.map(user => {
+                const isCurrentUser = user.id === currentUserId;
+                const teamValue = user.detailedTeam?.players.reduce((sum, p) => sum + p.price, 0) || 0;
+                const teamPoints = user.detailedTeam?.players.reduce((sum, p) => sum + p.points, 0) || 0;
+
+                return `
+                    <div class="rival-card-accordion ${isCurrentUser ? 'current-user' : ''}">
+                        <button class="accordion-header">
+                            <div class="rival-summary">
+                                <span class="rival-position">${user.position}º</span>
+                                <span class="rival-name">${user.name} ${isCurrentUser ? '(Tú)' : ''}</span>
+                                <span class="rival-points">${user.points || 0} pts</span>
+                                <span class="rival-team-value">${formatMoney(teamValue)}</span>
+                            </div>
+                            <span class="accordion-icon">▼</span>
+                        </button>
+                        <div class="accordion-content">
+                            <div class="rival-details">
+                                ${renderRivalTeam(user.detailedTeam)}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Renderizar el equipo de un rival (NUEVA FUNCIÓN)
+        function renderRivalTeam(detailedTeam) {
+            if (!detailedTeam || !detailedTeam.players || detailedTeam.players.length === 0) {
+                return '<p style="padding: 15px; color: #666;">No se pudo cargar la información del equipo.</p>';
+            }
+
+            const players = detailedTeam.players;
+            const lineupIds = detailedTeam.lineup?.playersID || [];
+
+            const a_lineados = players.filter(p => lineupIds.includes(p.id));
+            const b_anquillo = players.filter(p => !lineupIds.includes(p.id));
+
+            const renderPlayerList = (playerList) => {
+                if (playerList.length === 0) return '';
+                return playerList.map(player => {
+                    const fullPlayerData = allPlayersData?.data?.players[player.id] || player;
+                    return `
+                        <div class="rival-player-item">
+                            <span class="player-name">${fullPlayerData.name}</span>
+                            <span class="player-position">${getPositionName(fullPlayerData.position)}</span>
+                            <span class="player-points">${fullPlayerData.points} pts</span>
+                            <span class="player-price">${formatMoney(fullPlayerData.price)}</span>
+                        </div>
+                    `;
+                }).join('');
+            };
+
+            return `
+                <div class="rival-team-section">
+                    <h4>Alineación (${a_lineados.length})</h4>
+                    <div class="rival-player-list">${renderPlayerList(a_lineados)}</div>
+                </div>
+                <div class="rival-team-section">
+                    <h4>Banquillo (${b_anquillo.length})</h4>
+                    <div class="rival-player-list">${renderPlayerList(b_anquillo)}</div>
+                </div>
+            `;
+        }
+
+        // Añadir listeners para el acordeón (NUEVA FUNCIÓN)
+        function addAccordionListeners() {
+            const headers = document.querySelectorAll('.accordion-header');
+            headers.forEach(header => {
+                header.addEventListener('click', () => {
+                    const content = header.nextElementSibling;
+                    const icon = header.querySelector('.accordion-icon');
+                    
+                    header.parentElement.classList.toggle('active');
+
+                    if (content.style.maxHeight) {
+                        content.style.maxHeight = null;
+                        icon.textContent = '▼';
+                    } else {
+                        content.style.maxHeight = content.scrollHeight + "px";
+                        icon.textContent = '▲';
+                    }
+                });
+            });
+        }
+
+        // Función auxiliar para obtener nombre de posición
+        function getPositionName(positionId) {
+            const positionNames = { 1: 'POR', 2: 'DEF', 3: 'MED', 4: 'DEL' };
+            return positionNames[positionId] || 'N/A';
         }
 
         // Crear tabla de clasificación
