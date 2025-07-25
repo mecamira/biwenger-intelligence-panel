@@ -1889,9 +1889,11 @@
             sortedUsers.forEach((user, index) => user.position = index + 1);
 
             // Crear HTML
+            const standingsHTML = createStandingsTable(sortedUsers, currentUserId, leagueInfo);
             const rivalsHTML = createRivalsCards(sortedUsers, currentUserId);
 
             rivalsDiv.innerHTML = `
+                ${standingsHTML}
                 <div class="card">
                     <h3>📋 Análisis Detallado de Rivales</h3>
                     <div id="rivalsAccordion">
