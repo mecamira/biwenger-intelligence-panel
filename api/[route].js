@@ -145,6 +145,9 @@ export default async function handler(req, res) {
       case '/rivals':
         return await handleGetRivals(req, res, cookies);
         
+      case '/board-analysis':
+        return await handleBoardAnalysis(req, res, cookies);
+        
       default:
         res.status(404).json({ error: `Endpoint ${path} no encontrado` });
     }
@@ -929,6 +932,139 @@ async function handleGetRivals(req, res, cookies) {
     console.error('[Get Rivals Error]:', error);
     res.status(500).json({ 
       error: 'Error obteniendo datos de rivales',
+      details: error.message
+    });
+  }
+}
+
+// Analizar tablón y calcular presupuestos
+async function handleBoardAnalysis(req, res, cookies) {
+  const BoardAnalyzer = require('../utils/board-analyzer');
+  const token = cookies.bw_token;
+  
+  if (!token) {
+    return res.status(401).json({ error: 'No autenticado - token no encontrado' });
+  }
+
+  try {
+    console.log('[BoardAnalysis] Starting board analysis for budget tracking');
+    
+    // 1. Obtener contexto de liga
+    const accountResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
+      method: 'GET',
+      headers: { ...getBaseHeaders(token), 'Cookie': buildCookieString(cookies) }
+    });
+
+    if (!accountResponse.ok) {
+      return res.status(accountResponse.status).json({ error: 'No se pudo obtener contexto de usuario' });
+    }
+
+    const accountData = await accountResponse.json();
+    const context = extractUserContext(accountData);
+    
+    if (!context) {
+      return res.status(400).json({ error: 'No se pudo extraer contexto de liga' });
+    }
+
+    console.log('[BoardAnalysis] Context:', context);
+
+    // 2. Obtener datos del tablón desde /api/v2/home
+    const homeResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/home`, {
+      method: 'GET',
+      headers: { 
+        ...getBaseHeaders(token, context.leagueUserId, context.leagueId), 
+        'Cookie': buildCookieString(cookies) 
+      }
+    });
+
+    let boardData = [];
+    if (homeResponse.ok) {
+      const homeData = await homeResponse.json();
+      boardData = homeData.data?.league?.board || [];
+      console.log(`[BoardAnalysis] Found ${boardData.length} board entries from home endpoint`);
+    }
+
+    // 3. Intentar obtener más datos del tablón desde la liga
+    try {
+      const leagueUrl = `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}?fields=*,board,users(*,balance)`;
+      const leagueResponse = await fetch(leagueUrl, {
+        method: 'GET',
+        headers: { 
+          ...getBaseHeaders(token, context.leagueUserId, context.leagueId), 
+          'Cookie': buildCookieString(cookies) 
+        }
+      });
+
+      if (leagueResponse.ok) {
+        const leagueData = await leagueResponse.json();
+        if (leagueData.data?.board && leagueData.data.board.length > boardData.length) {
+          boardData = leagueData.data.board;
+          console.log(`[BoardAnalysis] Updated to ${boardData.length} board entries from league endpoint`);
+        }
+        
+        // Inicializar el analizador
+        const analyzer = new BoardAnalyzer();
+        
+        // Inicializar equipos con datos de usuarios
+        if (leagueData.data?.users) {
+          analyzer.initializeTeams(leagueData.data.users);
+          console.log(`[BoardAnalysis] Initialized ${leagueData.data.users.length} teams`);
+        } else if (accountData.data?.leagues?.[0]?.standings) {
+          // Fallback: usar standings si no hay users
+          analyzer.initializeTeams(accountData.data.leagues[0].standings);
+        }
+        
+        // Procesar el tablón
+        analyzer.processBoard(boardData);
+        
+        // Obtener el resumen
+        const summary = analyzer.getBudgetSummary();
+        
+        res.status(200).json({
+          success: true,
+          context: context,
+          boardEntriesCount: boardData.length,
+          data: summary,
+          rawBoard: boardData.slice(0, 5) // Incluir las primeras 5 entradas para debug
+        });
+      } else {
+        throw new Error('Could not fetch league data');
+      }
+    } catch (leagueError) {
+      console.error('[BoardAnalysis] League fetch error:', leagueError);
+      
+      // Si falla la liga, usar solo datos del home
+      const analyzer = new BoardAnalyzer();
+      
+      // Inicializar con datos básicos del account
+      if (accountData.data?.leagues?.[0]) {
+        const league = accountData.data.leagues[0];
+        const basicUsers = [{ 
+          id: context.leagueUserId, 
+          name: league.user?.name || 'Usuario',
+          balance: league.user?.balance || 11836080,
+          points: league.user?.points || 0,
+          position: league.user?.position || 1
+        }];
+        analyzer.initializeTeams(basicUsers);
+      }
+      
+      analyzer.processBoard(boardData);
+      const summary = analyzer.getBudgetSummary();
+      
+      res.status(200).json({
+        success: true,
+        context: context,
+        boardEntriesCount: boardData.length,
+        data: summary,
+        warning: 'Limited data available - only showing current user',
+        rawBoard: boardData.slice(0, 5)
+      });
+    }
+  } catch (error) {
+    console.error('[BoardAnalysis Error]:', error);
+    res.status(500).json({ 
+      error: 'Error analizando el tablón',
       details: error.message
     });
   }
