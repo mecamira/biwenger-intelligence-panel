@@ -21,7 +21,7 @@ class BoardAnalyzer {
                 position: user.position || 0,
                 points: user.points || 0,
                 initialBudget: INITIAL_BUDGET,
-                currentBudget: INITIAL_BUDGET,
+                currentBudget: user.balance || INITIAL_BUDGET,
                 balance: user.balance || INITIAL_BUDGET,
                 spent: 0,
                 received: 0,
@@ -64,27 +64,25 @@ class BoardAnalyzer {
         }
         this.processedEntries.add(entryId);
 
-        console.log(`[BoardAnalyzer] Processing entry type: ${entry.type}`);
+        console.log(`[BoardAnalyzer] Processing entry type: ${entry.type}`, entry);
 
         switch (entry.type) {
             case 'playerMovements':
                 this.processPlayerMovements(entry);
                 break;
             case 'transfer':
-                this.processTransfer(entry);
+                this.processTransferEntries(entry);
                 break;
             case 'market':
-                this.processMarketEntry(entry);
+                this.processMarketEntries(entry);
+                break;
+            case 'leagueReset':
+                this.handleLeagueReset(entry);
                 break;
             case 'lineup':
-                // Las alineaciones no afectan al presupuesto
-                break;
             case 'adminText':
-            case 'leagueReset':
-                // Mensajes administrativos
-                if (entry.type === 'leagueReset') {
-                    this.handleLeagueReset(entry);
-                }
+            case 'roundStarted':
+                // Estos no afectan al presupuesto
                 break;
             default:
                 console.log(`[BoardAnalyzer] Unknown entry type: ${entry.type}`);
@@ -92,128 +90,127 @@ class BoardAnalyzer {
     }
 
     /**
-     * Procesa movimientos de jugadores (traspasos entre equipos)
+     * Procesa movimientos de jugadores (traspasos entre equipos de LaLiga, no de nuestra liga)
      */
     processPlayerMovements(entry) {
         if (!entry.content || !Array.isArray(entry.content)) {
             return;
         }
 
-        entry.content.forEach(movement => {
-            if (movement.type === 'transfer' || movement.type === 'sale') {
-                const transaction = {
-                    date: new Date(entry.date * 1000),
-                    type: 'transfer',
-                    player: movement.player || {},
-                    from: movement.from || {},
-                    to: movement.to || {},
-                    amount: movement.amount || movement.price || 0,
-                    bonus: movement.bonus || 0
-                };
+        // Los playerMovements son traspasos entre equipos reales (Valencia, Athletic, etc.)
+        // NO son movimientos de nuestra liga, así que los ignoramos para el cálculo de presupuestos
+        console.log('[BoardAnalyzer] Skipping playerMovements (real teams transfers)');
+    }
+
+    /**
+     * Procesa transferencias (VENTAS de jugadores)
+     */
+    processTransferEntries(entry) {
+        if (!entry.content || !Array.isArray(entry.content)) {
+            console.log('[BoardAnalyzer] No content in transfer entry');
+            return;
+        }
+
+        // En los transfers, el campo "from" es quien VENDE el jugador (recibe dinero)
+        entry.content.forEach(transfer => {
+            if (transfer.from && transfer.from.id && transfer.amount) {
+                const sellerId = transfer.from.id;
+                const sellerName = transfer.from.name;
+                const amount = transfer.amount;
+                const playerId = transfer.player;
+
+                console.log(`[BoardAnalyzer] Transfer: ${sellerName} sells player ${playerId} for €${amount}`);
+
+                // El vendedor recibe dinero
+                this.updateTeamBudget(sellerId, sellerName, amount, 'income', `Venta jugador ${playerId}`);
 
                 // Registrar el movimiento
-                this.movements.push(transaction);
-
-                // Actualizar presupuestos de los equipos involucrados
-                this.updateTeamBudget(movement.from, transaction.amount, 'income');
-                this.updateTeamBudget(movement.to, transaction.amount, 'expense');
-            } else if (movement.type === 'market' || movement.type === 'purchase') {
-                const transaction = {
+                this.movements.push({
                     date: new Date(entry.date * 1000),
-                    type: 'market',
-                    player: movement.player || {},
-                    team: movement.user || movement.team || {},
-                    amount: movement.amount || movement.price || 0,
-                    action: movement.action || 'buy'
-                };
+                    type: 'sale',
+                    sellerId: sellerId,
+                    sellerName: sellerName,
+                    playerId: playerId,
+                    amount: amount
+                });
+            }
+        });
+    }
 
-                this.movements.push(transaction);
+    /**
+     * Procesa entradas de mercado (COMPRAS con pujas)
+     */
+    processMarketEntries(entry) {
+        if (!entry.content || !Array.isArray(entry.content)) {
+            console.log('[BoardAnalyzer] No content in market entry');
+            return;
+        }
 
-                if (transaction.action === 'buy') {
-                    this.updateTeamBudget(movement.user || movement.team, transaction.amount, 'expense');
-                } else if (transaction.action === 'sell') {
-                    this.updateTeamBudget(movement.user || movement.team, transaction.amount, 'income');
+        // En market, "to" es quien COMPRA el jugador (gasta dinero)
+        entry.content.forEach(purchase => {
+            if (purchase.to && purchase.to.id && purchase.amount) {
+                const buyerId = purchase.to.id;
+                const buyerName = purchase.to.name;
+                const amount = purchase.amount;
+                const playerId = purchase.player;
+
+                console.log(`[BoardAnalyzer] Market: ${buyerName} buys player ${playerId} for €${amount}`);
+
+                // El comprador gasta dinero
+                this.updateTeamBudget(buyerId, buyerName, amount, 'expense', `Compra jugador ${playerId}`);
+
+                // Registrar el movimiento
+                this.movements.push({
+                    date: new Date(entry.date * 1000),
+                    type: 'purchase',
+                    buyerId: buyerId,
+                    buyerName: buyerName,
+                    playerId: playerId,
+                    amount: amount,
+                    bids: purchase.bids || []
+                });
+
+                // Procesar las pujas perdedoras (opcional - para estadísticas)
+                if (purchase.bids) {
+                    purchase.bids.forEach(bid => {
+                        if (bid.user && bid.user.id !== buyerId) {
+                            console.log(`[BoardAnalyzer] Failed bid: ${bid.user.name} bid €${bid.amount} for player ${playerId}`);
+                        }
+                    });
                 }
             }
         });
     }
 
     /**
-     * Procesa una transferencia directa
-     */
-    processTransfer(entry) {
-        if (!entry.content) return;
-
-        const content = entry.content;
-        const transaction = {
-            date: new Date(entry.date * 1000),
-            type: 'transfer',
-            player: content.player || {},
-            from: content.from || {},
-            to: content.to || {},
-            amount: content.amount || content.price || 0
-        };
-
-        this.movements.push(transaction);
-
-        // Actualizar presupuestos
-        if (content.from) {
-            this.updateTeamBudget(content.from, transaction.amount, 'income');
-        }
-        if (content.to) {
-            this.updateTeamBudget(content.to, transaction.amount, 'expense');
-        }
-    }
-
-    /**
-     * Procesa una entrada de mercado
-     */
-    processMarketEntry(entry) {
-        if (!entry.content) return;
-
-        const content = entry.content;
-        const transaction = {
-            date: new Date(entry.date * 1000),
-            type: 'market',
-            player: content.player || {},
-            team: content.user || content.team || {},
-            amount: content.amount || content.price || 0,
-            action: content.action || 'buy'
-        };
-
-        this.movements.push(transaction);
-
-        const teamData = content.user || content.team;
-        if (transaction.action === 'buy' || transaction.action === 'purchase') {
-            this.updateTeamBudget(teamData, transaction.amount, 'expense');
-        } else if (transaction.action === 'sell' || transaction.action === 'sale') {
-            this.updateTeamBudget(teamData, transaction.amount, 'income');
-        }
-    }
-
-    /**
      * Actualiza el presupuesto de un equipo
      */
-    updateTeamBudget(teamData, amount, type) {
-        if (!teamData || !amount) return;
-
-        // Buscar el equipo por ID o nombre
-        let team = null;
-        if (teamData.id) {
-            team = this.teams.get(teamData.id);
-        } else if (teamData.name) {
-            // Buscar por nombre si no hay ID
-            for (const [id, t] of this.teams) {
-                if (t.name === teamData.name) {
-                    team = t;
-                    break;
-                }
-            }
+    updateTeamBudget(teamId, teamName, amount, type, description) {
+        if (!teamId || !amount) {
+            console.log('[BoardAnalyzer] Missing teamId or amount');
+            return;
         }
 
+        // Buscar o crear el equipo
+        let team = this.teams.get(teamId);
+        
         if (!team) {
-            console.log(`[BoardAnalyzer] Team not found:`, teamData);
-            return;
+            // Si el equipo no existe, lo creamos
+            console.log(`[BoardAnalyzer] Creating new team: ${teamName} (${teamId})`);
+            team = {
+                id: teamId,
+                name: teamName || `Team ${teamId}`,
+                position: 0,
+                points: 0,
+                initialBudget: INITIAL_BUDGET,
+                currentBudget: INITIAL_BUDGET,
+                balance: INITIAL_BUDGET,
+                spent: 0,
+                received: 0,
+                transactions: [],
+                lastUpdate: new Date()
+            };
+            this.teams.set(teamId, team);
         }
 
         // Actualizar el presupuesto
@@ -224,8 +221,9 @@ class BoardAnalyzer {
                 date: new Date(),
                 type: 'income',
                 amount: amount,
-                description: `Venta/Ingreso: +€${this.formatMoney(amount)}`
+                description: description || `Ingreso: +€${this.formatMoney(amount)}`
             });
+            console.log(`[BoardAnalyzer] ${team.name} receives €${amount}. New budget: €${team.currentBudget}`);
         } else if (type === 'expense') {
             team.currentBudget -= amount;
             team.spent += amount;
@@ -233,30 +231,37 @@ class BoardAnalyzer {
                 date: new Date(),
                 type: 'expense',
                 amount: amount,
-                description: `Compra/Gasto: -€${this.formatMoney(amount)}`
+                description: description || `Gasto: -€${this.formatMoney(amount)}`
             });
+            console.log(`[BoardAnalyzer] ${team.name} spends €${amount}. New budget: €${team.currentBudget}`);
         }
 
         team.lastUpdate = new Date();
-        console.log(`[BoardAnalyzer] Updated budget for ${team.name}: €${this.formatMoney(team.currentBudget)}`);
     }
 
     /**
      * Maneja el reset de la liga
      */
     handleLeagueReset(entry) {
-        console.log('[BoardAnalyzer] League reset detected');
+        console.log('[BoardAnalyzer] League reset detected - all teams return to initial budget');
+        
         // Reiniciar todos los presupuestos
         this.teams.forEach(team => {
             team.currentBudget = INITIAL_BUDGET;
             team.spent = 0;
             team.received = 0;
-            team.transactions = [];
+            team.transactions = [{
+                date: new Date(entry.date * 1000),
+                type: 'reset',
+                amount: INITIAL_BUDGET,
+                description: 'Liga reiniciada - Presupuesto inicial restaurado'
+            }];
             team.lastUpdate = new Date(entry.date * 1000);
         });
         
         // Limpiar movimientos anteriores
         this.movements = [];
+        console.log('[BoardAnalyzer] All teams reset to €' + this.formatMoney(INITIAL_BUDGET));
     }
 
     /**
@@ -265,21 +270,10 @@ class BoardAnalyzer {
     recalculateBudgets() {
         // Si tenemos información del balance real de la API, úsala como referencia
         this.teams.forEach(team => {
-            if (team.balance && team.balance !== team.currentBudget) {
-                const difference = team.balance - team.currentBudget;
-                console.log(`[BoardAnalyzer] Adjusting budget for ${team.name}: API balance=${team.balance}, calculated=${team.currentBudget}, diff=${difference}`);
-                
-                // Ajustar el presupuesto calculado para que coincida con el real
-                // Esto puede ocurrir si nos perdimos algunos movimientos
-                if (Math.abs(difference) > 1000) { // Solo si la diferencia es significativa
-                    team.currentBudget = team.balance;
-                    team.transactions.push({
-                        date: new Date(),
-                        type: 'adjustment',
-                        amount: difference,
-                        description: `Ajuste automático: ${difference > 0 ? '+' : ''}€${this.formatMoney(Math.abs(difference))}`
-                    });
-                }
+            // Solo para teams que ya estaban en la API original
+            if (team.balance && team.balance !== INITIAL_BUDGET) {
+                // El balance de la API ya tiene los cambios aplicados
+                console.log(`[BoardAnalyzer] Team ${team.name}: API balance=${team.balance}, calculated=${team.currentBudget}`);
             }
         });
     }
@@ -293,7 +287,7 @@ class BoardAnalyzer {
                 ...team,
                 budgetPercentage: ((team.currentBudget / INITIAL_BUDGET) * 100).toFixed(1),
                 netFlow: team.received - team.spent
-            })),
+            })).sort((a, b) => b.currentBudget - a.currentBudget),
             movements: this.movements.sort((a, b) => b.date - a.date),
             statistics: this.calculateStatistics()
         };
@@ -322,7 +316,9 @@ class BoardAnalyzer {
             team.transactions.length > (max?.transactions.length || 0) ? team : max, null);
         
         // Presupuesto promedio
-        const averageBudget = teams.reduce((sum, team) => sum + team.currentBudget, 0) / teams.length;
+        const averageBudget = teams.length > 0 ? 
+            teams.reduce((sum, team) => sum + team.currentBudget, 0) / teams.length : 
+            INITIAL_BUDGET;
         
         return {
             totalTransactions,

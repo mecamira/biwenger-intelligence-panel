@@ -1366,40 +1366,35 @@
                         return `⚽ ${playerName} - Movimiento`;
                     }).join('<br>');
                 } else if (item.type === 'transfer') {
-                    // Intento de extraer info de transferencias
-                    if (item.content) {
-                        const player = item.content.player?.name || 'Jugador';
-                        const from = item.content.from?.name || item.content.fromUser?.name || '';
-                        const to = item.content.to?.name || item.content.toUser?.name || '';
-                        const amount = item.content.amount || item.content.price || 0;
-                        
-                        if (from && to) {
-                            content = `🔄 Traspaso: ${player} de ${from} a ${to} ${amount > 0 ? '(€' + formatMoney(amount) + ')' : ''}`;
-                        } else if (from) {
-                            content = `📤 Venta: ${player} vendido por ${from} ${amount > 0 ? '(€' + formatMoney(amount) + ')' : ''}`;
-                        } else if (to) {
-                            content = `📥 Compra: ${player} fichado por ${to} ${amount > 0 ? '(€' + formatMoney(amount) + ')' : ''}`;
-                        } else {
-                            content = `🔄 Transferencia: ${player} ${amount > 0 ? '(€' + formatMoney(amount) + ')' : ''}`;
-                        }
+                    // TRANSFERS = VENTAS de jugadores
+                    if (item.content && Array.isArray(item.content)) {
+                        content = item.content.map(transfer => {
+                            const sellerName = transfer.from?.name || 'Equipo';
+                            const amount = transfer.amount || 0;
+                            const playerId = transfer.player || '?';
+                            return `💰 <strong>${sellerName}</strong> vende jugador #${playerId} por <strong style="color: #4CAF50;">${formatMoney(amount)}</strong>`;
+                        }).join('<br>');
                     } else {
                         content = `📋 Transferencia (sin detalles)`;
                     }
                 } else if (item.type === 'market') {
-                    // Intento de extraer info de mercado
-                    if (item.content) {
-                        const player = item.content.player?.name || 'Jugador';
-                        const user = item.content.user?.name || item.content.team?.name || 'Equipo';
-                        const amount = item.content.amount || item.content.price || 0;
-                        const action = item.content.action || 'movimiento';
-                        
-                        if (action === 'buy' || action === 'purchase') {
-                            content = `🛒 ${user} compra a ${player} ${amount > 0 ? '(€' + formatMoney(amount) + ')' : ''}`;
-                        } else if (action === 'sell' || action === 'sale') {
-                            content = `💰 ${user} vende a ${player} ${amount > 0 ? '(€' + formatMoney(amount) + ')' : ''}`;
-                        } else {
-                            content = `🛍️ Mercado: ${player} - ${user} ${amount > 0 ? '(€' + formatMoney(amount) + ')' : ''}`;
-                        }
+                    // MARKET = COMPRAS de jugadores (con pujas)
+                    if (item.content && Array.isArray(item.content)) {
+                        content = item.content.map(purchase => {
+                            const buyerName = purchase.to?.name || 'Equipo';
+                            const amount = purchase.amount || 0;
+                            const playerId = purchase.player || '?';
+                            let result = `🛒 <strong>${buyerName}</strong> compra jugador #${playerId} por <strong style="color: #f44336;">${formatMoney(amount)}</strong>`;
+                            
+                            // Mostrar pujas si las hay
+                            if (purchase.bids && purchase.bids.length > 0) {
+                                const bidsList = purchase.bids.slice(0, 3).map(bid => 
+                                    `${bid.user?.name}: ${formatMoney(bid.amount)}`
+                                ).join(', ');
+                                result += `<br><small style="color: #666; margin-left: 20px;">📊 Otras pujas: ${bidsList}</small>`;
+                            }
+                            return result;
+                        }).join('<br><br>');
                     } else {
                         content = `📋 Movimiento de mercado`;
                     }
