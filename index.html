@@ -973,6 +973,7 @@
                 <button class="nav-tab" onclick="showTab('market')">🛒 Mercado</button>
                 <button class="nav-tab" onclick="showTab('players')">👥 Base de Datos</button>
                 <button class="nav-tab" onclick="showTab('board')">📋 Tablón</button>
+                <button class="nav-tab" onclick="showTab('tracking')">💰 Seguimiento</button>
             </div>
 
             <!-- Panel Principal -->
@@ -1096,6 +1097,27 @@
                         <div class="loading">
                             <div class="spinner"></div>
                             <p>Cargando tablón...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Seguimiento de Presupuestos -->
+            <div id="tracking" class="tab-content">
+                <div class="card">
+                    <h3>💰 Seguimiento de Presupuestos</h3>
+                    <p style="margin-bottom: 20px; color: #666;">Análisis detallado de movimientos y presupuestos basado en el tablón de la liga.</p>
+                    
+                    <div style="text-align: center; padding: 20px;">
+                        <a href="budget-tracker.html" target="_blank" class="btn" style="display: inline-block; width: auto; padding: 14px 30px;">
+                            📈 Abrir Panel de Seguimiento
+                        </a>
+                    </div>
+                    
+                    <div id="trackingSummary" style="margin-top: 30px;">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p>Cargando resumen de presupuestos...</p>
                         </div>
                     </div>
                 </div>
@@ -1836,6 +1858,77 @@
                 loadMyTeam();
             } else if (tabName === 'rivals') {
                 loadRivals();
+            } else if (tabName === 'tracking') {
+                loadBudgetTracking();
+            }
+        }
+        
+        // Cargar seguimiento de presupuestos
+        async function loadBudgetTracking() {
+            const summaryDiv = document.getElementById('trackingSummary');
+            
+            try {
+                const response = await fetch('/api/board-analysis');
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('[BudgetTracking] Data received:', data);
+                    
+                    if (data.data && data.data.statistics) {
+                        const stats = data.data.statistics;
+                        const teams = data.data.teams || [];
+                        
+                        summaryDiv.innerHTML = `
+                            <div class="stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-value">${stats.totalTransactions || 0}</div>
+                                    <div class="stat-label">📄 Transacciones Totales</div>
+                                </div>
+                                <div class="stat-card balance">
+                                    <div class="stat-value">${formatMoney(stats.averageBudget || 0)}</div>
+                                    <div class="stat-label">💵 Presupuesto Promedio</div>
+                                </div>
+                                <div class="stat-card position">
+                                    <div class="stat-value">${stats.biggestSpender?.name || 'N/A'}</div>
+                                    <div class="stat-label">🛒 Mayor Gastador</div>
+                                </div>
+                                <div class="stat-card points">
+                                    <div class="stat-value">${stats.mostActive?.name || 'N/A'}</div>
+                                    <div class="stat-label">⚡ Más Activo</div>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 12px;">
+                                <h4 style="margin-bottom: 15px; color: #333;">Resumen de Equipos</h4>
+                                <div style="display: grid; gap: 10px;">
+                                    ${teams.slice(0, 5).map(team => `
+                                        <div style="display: flex; justify-content: space-between; padding: 10px; background: white; border-radius: 8px;">
+                                            <span><strong>${team.name}</strong></span>
+                                            <span style="color: #666;">Presupuesto: <strong>${formatMoney(team.currentBudget)}</strong></span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                                ${teams.length > 5 ? `<p style="text-align: center; margin-top: 10px; color: #666;">... y ${teams.length - 5} equipos más</p>` : ''}
+                            </div>
+                        `;
+                    } else {
+                        summaryDiv.innerHTML = `
+                            <div style="text-align: center; padding: 40px; color: #666;">
+                                <p>🔍 No hay datos de presupuestos disponibles aún.</p>
+                                <p style="margin-top: 10px;">Los datos se actualizarán cuando haya movimientos en el tablón.</p>
+                            </div>
+                        `;
+                    }
+                } else {
+                    throw new Error('Failed to load budget data');
+                }
+            } catch (error) {
+                console.error('Error loading budget tracking:', error);
+                summaryDiv.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #666;">
+                        <p>⚠️ Error cargando datos de presupuestos</p>
+                        <p style="margin-top: 10px;">Puedes usar el botón de arriba para abrir el panel completo.</p>
+                    </div>
+                `;
             }
         }
         // Cargar rivales
