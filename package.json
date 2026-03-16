@@ -4,11 +4,14 @@
   "description": "Panel de Inteligencia para gestión avanzada de equipos en Biwenger",
   "main": "index.html",
   "scripts": {
-    "dev": "netlify dev",
     "build": "echo 'Static site - no build needed'",
-    "deploy": "netlify deploy --prod"
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
   },
   "keywords": ["biwenger", "fantasy", "football", "analytics"],
   "author": "Tu nombre",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": "18.x"
+  }
 }
