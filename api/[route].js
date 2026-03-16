@@ -995,34 +995,38 @@ function countReceivedClausesThisWeek(boardData) {
 }
 
 // Calcular estado de cláusula de un jugador
-function calculateClauseStatus(player, nextJornadaDate) {
+// marketValue viene de los datos de competición (precio actual de mercado)
+function calculateClauseStatus(player, nextJornadaDate, marketValue = 0) {
   const now = Math.floor(Date.now() / 1000);
-  const purchaseDate = player.date || player.purchasedAt || 0;
+
+  // Biwenger usa 'date' para la fecha de compra en el endpoint de usuario
+  // Probamos varios nombres de campo por si cambia entre versiones de la API
+  const purchaseDate = player.date || player.buyDate || player.purchasedAt || player.since || 0;
   const daysSincePurchase = purchaseDate > 0 ? (now - purchaseDate) / 86400 : 999;
   const daysUntilActive = Math.max(0, LEAGUE_CONFIG.clauses.daysToActivate - daysSincePurchase);
 
   let clauseDeactivated = false;
-  let timeUntilJornada = null;
   let hoursUntilJornada = null;
   if (nextJornadaDate) {
-    timeUntilJornada = nextJornadaDate - now;
+    const timeUntilJornada = nextJornadaDate - now;
     hoursUntilJornada = Math.round(timeUntilJornada / 3600);
     if (timeUntilJornada > 0 && timeUntilJornada < LEAGUE_CONFIG.clauses.deactivateBeforeJornadaSecs) {
       clauseDeactivated = true;
     }
   }
 
+  // player.price en el endpoint de usuario = precio de compra (lo que pagó el gestor)
+  // marketValue = valor de mercado actual (de la API de competición)
   const purchasePrice = player.price || 0;
-  const marketValue = player.value || 0;
   const clausePrice = Math.max(purchasePrice, marketValue);
 
   return {
     purchaseDate,
-    purchaseDateFormatted: purchaseDate ? new Date(purchaseDate * 1000).toLocaleDateString('es-ES') : 'Desconocida',
+    purchaseDateFormatted: purchaseDate ? new Date(purchaseDate * 1000).toLocaleDateString('es-ES') : null,
     purchasePrice,
     marketValue,
     clausePrice,
-    daysSincePurchase: Math.floor(daysSincePurchase),
+    daysSincePurchase: purchaseDate > 0 ? Math.floor(daysSincePurchase) : null,
     daysUntilActive: Math.ceil(daysUntilActive),
     isActive: daysSincePurchase >= LEAGUE_CONFIG.clauses.daysToActivate && !clauseDeactivated,
     clauseDeactivated,
@@ -1056,26 +1060,35 @@ async function handleClauseAnalysis(req, res, cookies) {
     const leagueData = await leagueResponse.json();
     const users = leagueData.data?.users || [];
 
-    // 3. Obtener equipo detallado de cada usuario (con fecha de compra de cada jugador)
-    const detailedUsers = await Promise.all(users.map(async (user) => {
-      try {
-        const teamRes = await fetch(
-          `${BIWENGER_BASE_URL}/api/v2/user/${user.id}?fields=*,players(*,fitness,team,owner),lineup`,
-          { headers: { ...getBaseHeaders(token, context.leagueUserId, context.leagueId), 'Cookie': buildCookieString(cookies) } }
-        );
-        if (teamRes.ok) {
-          const teamData = await teamRes.json();
-          return { ...user, players: teamData.data?.players || [], lineup: teamData.data?.lineup };
+    // 3. Obtener equipo detallado de cada usuario + datos de mercado en paralelo
+    const [detailedUsers, compData, nextJornadaDate, boardData] = await Promise.all([
+      // Equipos de cada usuario (precio de compra + fecha de compra de cada jugador)
+      Promise.all(users.map(async (user) => {
+        try {
+          const teamRes = await fetch(
+            `${BIWENGER_BASE_URL}/api/v2/user/${user.id}?fields=*,players(*,fitness,team,owner),lineup`,
+            { headers: { ...getBaseHeaders(token, context.leagueUserId, context.leagueId), 'Cookie': buildCookieString(cookies) } }
+          );
+          if (teamRes.ok) {
+            const teamData = await teamRes.json();
+            return { ...user, players: teamData.data?.players || [], lineup: teamData.data?.lineup, _rawSample: teamData.data?.players?.[0] };
+          }
+        } catch (e) {
+          console.warn(`[ClauseAnalysis] Error fetching team for ${user.name}:`, e.message);
         }
-      } catch (e) {
-        console.warn(`[ClauseAnalysis] Error fetching team for ${user.name}:`, e.message);
-      }
-      return { ...user, players: [] };
-    }));
-
-    // 4. Fecha próxima jornada y tablón para contar cláusulas recibidas
-    const [nextJornadaDate, boardData] = await Promise.all([
+        return { ...user, players: [] };
+      })),
+      // Valores de mercado actuales de la API de competición
+      (async () => {
+        try {
+          const r = await fetch(`${BIWENGER_API_URL}/api/v2/competitions/la-liga/data?lang=es&score=1`, { headers: getBaseHeaders() });
+          if (r.ok) return await r.json();
+        } catch (e) {}
+        return null;
+      })(),
+      // Fecha próxima jornada
       getNextJornadaDate(),
+      // Tablón para contar cláusulas recibidas esta semana
       (async () => {
         try {
           const homeRes = await fetch(`${BIWENGER_BASE_URL}/api/v2/home`, {
@@ -1090,6 +1103,14 @@ async function handleClauseAnalysis(req, res, cookies) {
       })()
     ]);
 
+    // Mapa de ID de jugador -> valor de mercado actual (de la API de competición)
+    const marketValues = {};
+    if (compData?.data?.players) {
+      Object.entries(compData.data.players).forEach(([id, p]) => {
+        marketValues[String(id)] = p.price || 0;
+      });
+    }
+
     const receivedThisWeek = countReceivedClausesThisWeek(boardData);
     const myUserId = String(context.leagueUserId);
 
@@ -1097,13 +1118,18 @@ async function handleClauseAnalysis(req, res, cookies) {
     const atRisk = [];
     const upcoming = [];
 
+    // Debug: guardar una muestra de jugador raw para diagnóstico
+    let _sampleRawPlayer = null;
+
     for (const user of detailedUsers) {
       const isMe = String(user.id) === myUserId;
       const userReceivedCount = receivedThisWeek[user.id] || 0;
       const canReceiveMore = userReceivedCount < LEAGUE_CONFIG.clauses.limitsReceived.count;
 
       for (const player of (user.players || [])) {
-        const status = calculateClauseStatus(player, nextJornadaDate);
+        if (!_sampleRawPlayer) _sampleRawPlayer = player; // guardar primero para debug
+        const mv = marketValues[String(player.id)] || 0;
+        const status = calculateClauseStatus(player, nextJornadaDate, mv);
 
         const entry = {
           playerId: player.id,
@@ -1142,7 +1168,12 @@ async function handleClauseAnalysis(req, res, cookies) {
       canSteal: { count: canSteal.length, players: canSteal },
       atRisk: { count: atRisk.filter(p => p.isAtRisk).length, players: atRisk },
       upcoming: { count: upcoming.length, players: upcoming },
-      receivedThisWeek
+      receivedThisWeek,
+      _debug: {
+        marketValuesLoaded: Object.keys(marketValues).length,
+        sampleRawPlayer: _sampleRawPlayer, // Ver campos reales que devuelve la API
+        sampleMarketValue: _sampleRawPlayer ? marketValues[String(_sampleRawPlayer.id)] : null
+      }
     });
   } catch (error) {
     console.error('[ClauseAnalysis Error]:', error);
