@@ -5,6 +5,22 @@
 const BIWENGER_BASE_URL = 'https://biwenger.as.com';
 const BIWENGER_API_URL = 'https://cf.biwenger.com';
 
+// Configuración de la liga (según ajustes actuales)
+const LEAGUE_CONFIG = {
+  clauses: {
+    type: 'all',                          // Para todos los jugadores aunque no estén en venta
+    priceBase: 'max',                     // max(precio_compra, VM)
+    percentage: 100,                      // 100%
+    daysToActivate: 7,                    // 7 días tras la compra
+    deactivateBeforeJornadaSecs: 86400,   // 1 día antes del inicio de jornada
+    transferTime: 'instant',
+    limitsExecuted: null,                 // Sin límite
+    limitsReceived: { count: 2, periodDays: 7 }, // 2 recibidas por semana
+    increase: { percentage: 200, recoverable: false }
+  },
+  initialBudget: 11836080
+};
+
 // Headers actualizados para evitar el error "Old version"
 const getBaseHeaders = (token = null, userId = null, leagueId = null, additionalHeaders = {}) => {
   const baseHeaders = {
@@ -147,7 +163,10 @@ export default async function handler(req, res) {
         
       case '/board-analysis':
         return await handleBoardAnalysis(req, res, cookies);
-        
+
+      case '/clause-analysis':
+        return await handleClauseAnalysis(req, res, cookies);
+
       default:
         res.status(404).json({ error: `Endpoint ${path} no encontrado` });
     }
@@ -934,6 +953,200 @@ async function handleGetRivals(req, res, cookies) {
       error: 'Error obteniendo datos de rivales',
       details: error.message
     });
+  }
+}
+
+// Obtener la fecha del inicio de la próxima jornada
+async function getNextJornadaDate() {
+  try {
+    const response = await fetch(`${BIWENGER_API_URL}/api/v2/competitions/la-liga/data?lang=es&score=1`, {
+      headers: getBaseHeaders()
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const rounds = data.data?.rounds;
+    if (!rounds) return null;
+    const now = Math.floor(Date.now() / 1000);
+    const futureRounds = rounds.filter(r => r.date > now);
+    if (futureRounds.length === 0) return null;
+    return Math.min(...futureRounds.map(r => r.date));
+  } catch (e) {
+    console.warn('[getNextJornadaDate] Error:', e.message);
+    return null;
+  }
+}
+
+// Contar cláusulas recibidas por equipo en los últimos 7 días (desde el tablón)
+function countReceivedClausesThisWeek(boardData) {
+  const oneWeekAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
+  const received = {};
+  boardData.forEach(entry => {
+    if (entry.date < oneWeekAgo) return;
+    if (entry.type === 'clausula' || entry.type === 'clause') {
+      const items = Array.isArray(entry.content) ? entry.content : (entry.content ? [entry.content] : []);
+      items.forEach(item => {
+        // "from" es el equipo al que le roban el jugador (recibe la cláusula)
+        const victimId = item.from?.id;
+        if (victimId) received[victimId] = (received[victimId] || 0) + 1;
+      });
+    }
+  });
+  return received;
+}
+
+// Calcular estado de cláusula de un jugador
+function calculateClauseStatus(player, nextJornadaDate) {
+  const now = Math.floor(Date.now() / 1000);
+  const purchaseDate = player.date || player.purchasedAt || 0;
+  const daysSincePurchase = purchaseDate > 0 ? (now - purchaseDate) / 86400 : 999;
+  const daysUntilActive = Math.max(0, LEAGUE_CONFIG.clauses.daysToActivate - daysSincePurchase);
+
+  let clauseDeactivated = false;
+  let timeUntilJornada = null;
+  let hoursUntilJornada = null;
+  if (nextJornadaDate) {
+    timeUntilJornada = nextJornadaDate - now;
+    hoursUntilJornada = Math.round(timeUntilJornada / 3600);
+    if (timeUntilJornada > 0 && timeUntilJornada < LEAGUE_CONFIG.clauses.deactivateBeforeJornadaSecs) {
+      clauseDeactivated = true;
+    }
+  }
+
+  const purchasePrice = player.price || 0;
+  const marketValue = player.value || 0;
+  const clausePrice = Math.max(purchasePrice, marketValue);
+
+  return {
+    purchaseDate,
+    purchaseDateFormatted: purchaseDate ? new Date(purchaseDate * 1000).toLocaleDateString('es-ES') : 'Desconocida',
+    purchasePrice,
+    marketValue,
+    clausePrice,
+    daysSincePurchase: Math.floor(daysSincePurchase),
+    daysUntilActive: Math.ceil(daysUntilActive),
+    isActive: daysSincePurchase >= LEAGUE_CONFIG.clauses.daysToActivate && !clauseDeactivated,
+    clauseDeactivated,
+    hoursUntilJornada
+  };
+}
+
+// Análisis completo de cláusulas de la liga
+async function handleClauseAnalysis(req, res, cookies) {
+  const token = cookies.bw_token;
+  if (!token) return res.status(401).json({ error: 'No autenticado' });
+
+  try {
+    console.log('[ClauseAnalysis] Starting');
+
+    // 1. Contexto de liga
+    const accountResponse = await fetch(`${BIWENGER_BASE_URL}/api/v2/account`, {
+      headers: { ...getBaseHeaders(token), 'Cookie': buildCookieString(cookies) }
+    });
+    if (!accountResponse.ok) return res.status(401).json({ error: 'No se pudo obtener contexto' });
+    const accountData = await accountResponse.json();
+    const context = extractUserContext(accountData);
+    if (!context) return res.status(400).json({ error: 'No se pudo extraer contexto de liga' });
+
+    // 2. Todos los usuarios con sus equipos
+    const leagueUrl = `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}?fields=*,users(*,account,team)`;
+    const leagueResponse = await fetch(leagueUrl, {
+      headers: { ...getBaseHeaders(token, context.leagueUserId, context.leagueId), 'Cookie': buildCookieString(cookies) }
+    });
+    if (!leagueResponse.ok) return res.status(leagueResponse.status).json({ error: 'Error obteniendo la liga' });
+    const leagueData = await leagueResponse.json();
+    const users = leagueData.data?.users || [];
+
+    // 3. Obtener equipo detallado de cada usuario (con fecha de compra de cada jugador)
+    const detailedUsers = await Promise.all(users.map(async (user) => {
+      try {
+        const teamRes = await fetch(
+          `${BIWENGER_BASE_URL}/api/v2/user/${user.id}?fields=*,players(*,fitness,team,owner),lineup`,
+          { headers: { ...getBaseHeaders(token, context.leagueUserId, context.leagueId), 'Cookie': buildCookieString(cookies) } }
+        );
+        if (teamRes.ok) {
+          const teamData = await teamRes.json();
+          return { ...user, players: teamData.data?.players || [], lineup: teamData.data?.lineup };
+        }
+      } catch (e) {
+        console.warn(`[ClauseAnalysis] Error fetching team for ${user.name}:`, e.message);
+      }
+      return { ...user, players: [] };
+    }));
+
+    // 4. Fecha próxima jornada y tablón para contar cláusulas recibidas
+    const [nextJornadaDate, boardData] = await Promise.all([
+      getNextJornadaDate(),
+      (async () => {
+        try {
+          const homeRes = await fetch(`${BIWENGER_BASE_URL}/api/v2/home`, {
+            headers: { ...getBaseHeaders(token, context.leagueUserId, context.leagueId), 'Cookie': buildCookieString(cookies) }
+          });
+          if (homeRes.ok) {
+            const homeData = await homeRes.json();
+            return homeData.data?.league?.board || [];
+          }
+        } catch (e) {}
+        return [];
+      })()
+    ]);
+
+    const receivedThisWeek = countReceivedClausesThisWeek(boardData);
+    const myUserId = String(context.leagueUserId);
+
+    const canSteal = [];
+    const atRisk = [];
+    const upcoming = [];
+
+    for (const user of detailedUsers) {
+      const isMe = String(user.id) === myUserId;
+      const userReceivedCount = receivedThisWeek[user.id] || 0;
+      const canReceiveMore = userReceivedCount < LEAGUE_CONFIG.clauses.limitsReceived.count;
+
+      for (const player of (user.players || [])) {
+        const status = calculateClauseStatus(player, nextJornadaDate);
+
+        const entry = {
+          playerId: player.id,
+          ownerId: user.id,
+          ownerName: user.name,
+          ...status,
+          ownerReceivedThisWeek: userReceivedCount,
+          ownerCanReceiveMore: canReceiveMore
+        };
+
+        if (isMe) {
+          atRisk.push({ ...entry, isAtRisk: status.isActive });
+        } else {
+          if (status.isActive && canReceiveMore) {
+            canSteal.push(entry);
+          } else if (!status.isActive && status.daysUntilActive > 0 && status.daysUntilActive <= 7) {
+            upcoming.push(entry);
+          }
+        }
+      }
+    }
+
+    canSteal.sort((a, b) => a.clausePrice - b.clausePrice);
+    atRisk.sort((a, b) => {
+      if (a.isAtRisk !== b.isAtRisk) return b.isAtRisk - a.isAtRisk;
+      return a.clausePrice - b.clausePrice;
+    });
+    upcoming.sort((a, b) => a.daysUntilActive - b.daysUntilActive);
+
+    res.status(200).json({
+      success: true,
+      context,
+      leagueConfig: LEAGUE_CONFIG.clauses,
+      nextJornada: nextJornadaDate ? new Date(nextJornadaDate * 1000).toISOString() : null,
+      myId: myUserId,
+      canSteal: { count: canSteal.length, players: canSteal },
+      atRisk: { count: atRisk.filter(p => p.isAtRisk).length, players: atRisk },
+      upcoming: { count: upcoming.length, players: upcoming },
+      receivedThisWeek
+    });
+  } catch (error) {
+    console.error('[ClauseAnalysis Error]:', error);
+    res.status(500).json({ error: error.message });
   }
 }
 

@@ -898,6 +898,23 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        /* ===== CLÁUSULAS ===== */
+        .clause-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .clause-table th {
+            background: #f5f5f5; padding: 10px 12px; text-align: left;
+            font-weight: 600; color: #555; border-bottom: 2px solid #e0e0e0;
+        }
+        .clause-table td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+        .clause-table tr:hover { background: #fafafa; }
+        .clause-table tr:last-child td { border-bottom: none; }
+        .badge-active { background:#e8f5e9; color:#2e7d32; padding:3px 9px; border-radius:12px; font-size:0.8rem; font-weight:600; }
+        .badge-inactive { background:#fff3e0; color:#e65100; padding:3px 9px; border-radius:12px; font-size:0.8rem; font-weight:600; }
+        .badge-deactivated { background:#fce4ec; color:#c62828; padding:3px 9px; border-radius:12px; font-size:0.8rem; font-weight:600; }
+        .badge-limit { background:#e3f2fd; color:#1565c0; padding:3px 9px; border-radius:12px; font-size:0.8rem; }
+        .clause-price { font-weight: 700; color: #1565c0; }
+        .clause-owner { color: #555; font-size: 0.85rem; }
+        .clause-empty { text-align:center; padding:40px; color:#999; }
     </style>
 </head>
 <body>
@@ -974,6 +991,7 @@
                 <button class="nav-tab" onclick="showTab('players')">👥 Base de Datos</button>
                 <button class="nav-tab" onclick="showTab('board')">📋 Tablón</button>
                 <button class="nav-tab" onclick="showTab('tracking')">💰 Seguimiento</button>
+                <button class="nav-tab" onclick="showTab('clauses')">🔓 Cláusulas</button>
             </div>
 
             <!-- Panel Principal -->
@@ -1102,6 +1120,46 @@
                 </div>
             </div>
 
+            <!-- Cláusulas -->
+            <div id="clauses" class="tab-content">
+                <div id="clausesLoading" class="loading">
+                    <div class="spinner"></div>
+                    <p>Analizando cláusulas de la liga...</p>
+                </div>
+                <div id="clausesContent" style="display:none;">
+                    <!-- Resumen -->
+                    <div class="stats-grid" id="clausesSummary"></div>
+
+                    <!-- Próxima jornada -->
+                    <div id="clausesJornada" class="card" style="margin-bottom:20px;display:none;">
+                        <h4 style="margin:0;color:#e65100;">⏰ Aviso de jornada</h4>
+                        <p id="clausesJornadaText" style="margin:8px 0 0;"></p>
+                    </div>
+
+                    <!-- Puedes robar AHORA -->
+                    <div class="card">
+                        <h3>🎯 Jugadores que puedes robar AHORA</h3>
+                        <p style="color:#666;margin-bottom:16px;font-size:0.9rem;">Cláusulas activas de rivales. Precio = max(precio_compra, VM actual).</p>
+                        <div id="canStealList"></div>
+                    </div>
+
+                    <!-- Tus jugadores en riesgo -->
+                    <div class="card" style="margin-top:20px;">
+                        <h3>⚠️ Tus jugadores en riesgo</h3>
+                        <p style="color:#666;margin-bottom:16px;font-size:0.9rem;">Jugadores de tu equipo con cláusula activa que cualquier rival puede ejecutar.</p>
+                        <div id="atRiskList"></div>
+                    </div>
+
+                    <!-- Próximas activaciones -->
+                    <div class="card" style="margin-top:20px;">
+                        <h3>📅 Próximas activaciones (próximos 7 días)</h3>
+                        <p style="color:#666;margin-bottom:16px;font-size:0.9rem;">Jugadores de rivales cuya cláusula se activa pronto.</p>
+                        <div id="upcomingList"></div>
+                    </div>
+                </div>
+                <div id="clausesError" style="display:none;padding:20px;text-align:center;color:#c62828;"></div>
+            </div>
+
             <!-- Seguimiento de Presupuestos -->
             <div id="tracking" class="tab-content">
                 <div class="card">
@@ -1132,6 +1190,7 @@
         let marketData = null;
         let homeData = null;
         let myTeamData = null;
+        let clauseData = null;
         let currentTab = 'overview';
 
         // Función de inicialización
@@ -1917,6 +1976,8 @@
                 loadRivals();
             } else if (tabName === 'tracking') {
                 loadBudgetTracking();
+            } else if (tabName === 'clauses') {
+                loadClauseAnalysis();
             }
         }
         
@@ -2269,6 +2330,148 @@
             return diffDays;
         }
 
+        // ===== CLÁUSULAS =====
+
+        async function loadClauseAnalysis() {
+            if (clauseData) {
+                displayClauseAnalysis(clauseData);
+                return;
+            }
+
+            document.getElementById('clausesLoading').style.display = 'block';
+            document.getElementById('clausesContent').style.display = 'none';
+            document.getElementById('clausesError').style.display = 'none';
+
+            // Asegurarse de que tenemos la base de datos de jugadores
+            if (!allPlayersData) {
+                const r = await fetch('/api/players');
+                if (r.ok) allPlayersData = await r.json();
+            }
+
+            try {
+                const response = await fetch('/api/clause-analysis');
+                if (!response.ok) throw new Error('Error cargando análisis de cláusulas');
+                clauseData = await response.json();
+                displayClauseAnalysis(clauseData);
+            } catch (error) {
+                console.error('[ClauseAnalysis] Error:', error);
+                document.getElementById('clausesLoading').style.display = 'none';
+                const errDiv = document.getElementById('clausesError');
+                errDiv.style.display = 'block';
+                errDiv.innerHTML = `❌ Error cargando análisis de cláusulas: ${error.message}`;
+            }
+        }
+
+        function displayClauseAnalysis(data) {
+            document.getElementById('clausesLoading').style.display = 'none';
+            document.getElementById('clausesContent').style.display = 'block';
+
+            const playersMap = allPlayersData?.data?.players || {};
+
+            // Resumen
+            const canStealCount = data.canSteal?.count || 0;
+            const atRiskCount = data.atRisk?.count || 0;
+            const upcomingCount = data.upcoming?.count || 0;
+            const jornadaText = data.nextJornada
+                ? new Date(data.nextJornada).toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long', hour:'2-digit', minute:'2-digit' })
+                : null;
+
+            document.getElementById('clausesSummary').innerHTML = `
+                <div class="stat-card" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9);">
+                    <div class="stat-value" style="color:#2e7d32;">${canStealCount}</div>
+                    <div class="stat-label">🎯 Puedes robar AHORA</div>
+                </div>
+                <div class="stat-card" style="background:linear-gradient(135deg,#fce4ec,#f8bbd0);">
+                    <div class="stat-value" style="color:#c62828;">${atRiskCount}</div>
+                    <div class="stat-label">⚠️ Tus jugadores en riesgo</div>
+                </div>
+                <div class="stat-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb);">
+                    <div class="stat-value" style="color:#1565c0;">${upcomingCount}</div>
+                    <div class="stat-label">📅 Se activan en 7 días</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="font-size:1.1rem;">${jornadaText ? jornadaText : 'N/A'}</div>
+                    <div class="stat-label">🏁 Próxima jornada</div>
+                </div>
+            `;
+
+            // Aviso si las cláusulas están a punto de desactivarse
+            const jornadaDiv = document.getElementById('clausesJornada');
+            const jornadaTextDiv = document.getElementById('clausesJornadaText');
+            if (data.nextJornada) {
+                const hoursLeft = Math.round((new Date(data.nextJornada) - new Date()) / 3600000);
+                if (hoursLeft <= 48 && hoursLeft > 0) {
+                    jornadaDiv.style.display = 'block';
+                    if (hoursLeft <= 24) {
+                        jornadaDiv.style.background = '#fce4ec';
+                        jornadaTextDiv.innerHTML = `🚨 <strong>Las cláusulas se desactivan en ${hoursLeft}h</strong>. Quedan menos de 24h para el inicio de jornada.`;
+                    } else {
+                        jornadaDiv.style.background = '#fff8e1';
+                        jornadaTextDiv.innerHTML = `⚠️ Las cláusulas se desactivarán en <strong>${hoursLeft}h</strong> (1 día antes de la jornada).`;
+                    }
+                } else {
+                    jornadaDiv.style.display = 'none';
+                }
+            }
+
+            // Tabla helper
+            const makeTable = (players, showOwner, showRisk) => {
+                if (!players || players.length === 0) {
+                    return `<div class="clause-empty">No hay jugadores en esta categoría.</div>`;
+                }
+                const rows = players.map(p => {
+                    const playerInfo = playersMap[p.playerId];
+                    const name = playerInfo?.name || `Jugador #${p.playerId}`;
+                    const team = allPlayersData?.data?.teams?.[playerInfo?.teamID]?.name || playerInfo?.team?.name || '';
+                    const pos = { 1:'POR', 2:'DEF', 3:'MED', 4:'DEL' }[playerInfo?.position] || '';
+
+                    let statusBadge;
+                    if (showRisk) {
+                        statusBadge = p.isAtRisk
+                            ? `<span class="badge-active">⚠️ Activa</span>`
+                            : (p.clauseDeactivated
+                                ? `<span class="badge-deactivated">🏁 Desact. jornada</span>`
+                                : `<span class="badge-inactive">⏳ En ${p.daysUntilActive}d</span>`);
+                    } else {
+                        statusBadge = p.clauseDeactivated
+                            ? `<span class="badge-deactivated">🏁 Desact. jornada</span>`
+                            : `<span class="badge-active">✅ Activa</span>`;
+                    }
+
+                    const limitBadge = !showRisk && !p.ownerCanReceiveMore
+                        ? `<br><span class="badge-limit">Límite semana</span>`
+                        : '';
+
+                    const purchasePriceStr = p.purchasePrice ? formatMoney(p.purchasePrice) : 'N/A';
+                    const vmStr = p.marketValue ? formatMoney(p.marketValue) : 'N/A';
+
+                    return `<tr>
+                        <td><strong>${name}</strong><br><span style="color:#888;font-size:0.8rem;">${pos}${team ? ' · ' + team : ''}</span></td>
+                        ${showOwner ? `<td class="clause-owner">${p.ownerName}</td>` : ''}
+                        <td>${purchasePriceStr}</td>
+                        <td>${vmStr}</td>
+                        <td class="clause-price">${formatMoney(p.clausePrice)}</td>
+                        <td>${p.daysSincePurchase}d ${p.purchaseDateFormatted ? `<br><span style="font-size:0.75rem;color:#888;">${p.purchaseDateFormatted}</span>` : ''}</td>
+                        <td>${statusBadge}${limitBadge}</td>
+                    </tr>`;
+                }).join('');
+
+                const ownerHeader = showOwner ? '<th>Propietario</th>' : '';
+                return `<table class="clause-table">
+                    <thead><tr>
+                        <th>Jugador</th>${ownerHeader}
+                        <th>P. Compra</th><th>VM actual</th><th>Precio cláusula</th>
+                        <th>Días en equipo</th><th>Estado</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
+            };
+
+            document.getElementById('canStealList').innerHTML = makeTable(data.canSteal?.players, true, false);
+            document.getElementById('atRiskList').innerHTML = makeTable(data.atRisk?.players, false, true);
+            document.getElementById('upcomingList').innerHTML = makeTable(data.upcoming?.players, true, false);
+        }
+
         // Cerrar sesión
         function logout() {
             // Limpiar estado
@@ -2277,6 +2480,7 @@
             marketData = null;
             homeData = null;
             myTeamData = null;
+            clauseData = null;
             
             // Limpiar formulario
             document.getElementById('loginForm').reset();

@@ -76,6 +76,10 @@ class BoardAnalyzer {
             case 'market':
                 this.processMarketEntries(entry);
                 break;
+            case 'clausula':
+            case 'clause':
+                this.processClauseEntries(entry);
+                break;
             case 'leagueReset':
                 this.handleLeagueReset(entry);
                 break;
@@ -179,6 +183,49 @@ class BoardAnalyzer {
                     });
                 }
             }
+        });
+    }
+
+    /**
+     * Procesa ejecuciones de cláusulas
+     * Cuando se ejecuta una cláusula:
+     *   - "from" (equipo que pierde el jugador) RECIBE el dinero
+     *   - "to" (equipo que roba el jugador) PAGA el dinero
+     */
+    processClauseEntries(entry) {
+        if (!entry.content || !Array.isArray(entry.content)) {
+            console.log('[BoardAnalyzer] No content in clausula entry');
+            return;
+        }
+
+        entry.content.forEach(clause => {
+            const amount = clause.amount || 0;
+            const playerId = clause.player;
+
+            if (clause.from && clause.from.id && amount) {
+                const sellerId = clause.from.id;
+                const sellerName = clause.from.name;
+                console.log(`[BoardAnalyzer] Clause: ${sellerName} loses player ${playerId}, receives €${amount}`);
+                this.updateTeamBudget(sellerId, sellerName, amount, 'income', `Cláusula ejecutada - jugador ${playerId}`);
+            }
+
+            if (clause.to && clause.to.id && amount) {
+                const buyerId = clause.to.id;
+                const buyerName = clause.to.name;
+                console.log(`[BoardAnalyzer] Clause: ${buyerName} steals player ${playerId}, pays €${amount}`);
+                this.updateTeamBudget(buyerId, buyerName, amount, 'expense', `Cláusula ejecutada - jugador ${playerId}`);
+            }
+
+            this.movements.push({
+                date: new Date(entry.date * 1000),
+                type: 'clause',
+                fromId: clause.from?.id,
+                fromName: clause.from?.name,
+                toId: clause.to?.id,
+                toName: clause.to?.name,
+                playerId,
+                amount
+            });
         });
     }
 
