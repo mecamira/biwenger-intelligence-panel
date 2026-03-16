@@ -912,6 +912,7 @@
         .badge-inactive { background:#fff3e0; color:#e65100; padding:3px 9px; border-radius:12px; font-size:0.8rem; font-weight:600; }
         .badge-deactivated { background:#fce4ec; color:#c62828; padding:3px 9px; border-radius:12px; font-size:0.8rem; font-weight:600; }
         .badge-limit { background:#e3f2fd; color:#1565c0; padding:3px 9px; border-radius:12px; font-size:0.8rem; }
+        .badge-probable { background:#f3e5f5; color:#6a1b9a; padding:3px 9px; border-radius:12px; font-size:0.8rem; font-weight:600; }
         .clause-price { font-weight: 700; color: #1565c0; }
         .clause-owner { color: #555; font-size: 0.85rem; }
         .clause-empty { text-align:center; padding:40px; color:#999; }
@@ -1145,7 +1146,7 @@
                     <!-- Puedes robar AHORA -->
                     <div class="card">
                         <h3>🎯 Jugadores que puedes robar AHORA</h3>
-                        <p style="color:#666;margin-bottom:16px;font-size:0.9rem;">Cláusulas activas de rivales. Precio = max(precio_compra, VM actual).</p>
+                        <p style="color:#666;margin-bottom:16px;font-size:0.9rem;">Cláusulas activas de rivales. <strong>✅ Activa</strong> = confirmado por el tablón · <strong style="color:#6a1b9a;">❓ Prob. activa</strong> = fecha de compra no disponible, lleva tiempo en el equipo. Precio = max(precio_compra, VM actual).</p>
                         <div id="canStealList"></div>
                     </div>
 
@@ -2404,13 +2405,8 @@
 
             // Aviso jugadores con fecha desconocida
             const unknownDiv = document.getElementById('clausesUnknownDiv');
-            if (unknownCount > 0) {
-                unknownDiv.style.display = 'block';
-                document.getElementById('clausesUnknownText').innerHTML =
-                    ` — <strong>${unknownCount} jugadores de rivales</strong> no aparecen en el historial reciente del tablón, por lo que no se puede determinar cuándo fueron comprados. Estos jugadores <em>pueden</em> tener la cláusula activa pero no se muestran para evitar falsos positivos. El historial se amplía conforme el tablón registre más movimientos.`;
-            } else {
-                unknownDiv.style.display = 'none';
-            }
+            // Ya no ocultamos los jugadores con fecha desconocida; se muestran como "Prob. activa"
+            unknownDiv.style.display = 'none';
 
             // Aviso si las cláusulas están a punto de desactivarse
             const jornadaDiv = document.getElementById('clausesJornada');
@@ -2445,22 +2441,30 @@
                     let statusBadge;
                     if (showRisk) {
                         // Tabla "mis jugadores en riesgo"
-                        statusBadge = p.isAtRisk
-                            ? `<span class="badge-active">⚠️ Activa</span>`
-                            : (p.clauseDeactivated
-                                ? `<span class="badge-deactivated">🏁 Desact. jornada</span>`
-                                : (p.daysUntilActive !== null
-                                    ? `<span class="badge-inactive">⏳ En ${p.daysUntilActive}d</span>`
-                                    : `<span class="badge-inactive">⏳ Fecha desc.</span>`));
+                        if (p.isAtRisk && p.dateUnknown) {
+                            statusBadge = `<span class="badge-probable">❓ Prob. activa</span>`;
+                        } else if (p.isAtRisk) {
+                            statusBadge = `<span class="badge-active">⚠️ Activa</span>`;
+                        } else if (p.clauseDeactivated) {
+                            statusBadge = `<span class="badge-deactivated">🏁 Desact. jornada</span>`;
+                        } else {
+                            statusBadge = p.daysUntilActive !== null
+                                ? `<span class="badge-inactive">⏳ En ${p.daysUntilActive}d</span>`
+                                : `<span class="badge-inactive">⏳ Fecha desc.</span>`;
+                        }
                     } else {
                         // Tabla "puedes robar" o "próximas activaciones"
-                        statusBadge = p.clauseDeactivated
-                            ? `<span class="badge-deactivated">🏁 Desact. jornada</span>`
-                            : (p.isActive
-                                ? `<span class="badge-active">✅ Activa</span>`
-                                : (p.daysUntilActive !== null
-                                    ? `<span class="badge-inactive">⏳ En ${p.daysUntilActive}d</span>`
-                                    : `<span class="badge-inactive">⏳ Fecha desc.</span>`));
+                        if (p.clauseDeactivated) {
+                            statusBadge = `<span class="badge-deactivated">🏁 Desact. jornada</span>`;
+                        } else if (p.likelyActive) {
+                            statusBadge = `<span class="badge-probable">❓ Prob. activa</span>`;
+                        } else if (p.isActive) {
+                            statusBadge = `<span class="badge-active">✅ Activa</span>`;
+                        } else {
+                            statusBadge = p.daysUntilActive !== null
+                                ? `<span class="badge-inactive">⏳ En ${p.daysUntilActive}d</span>`
+                                : `<span class="badge-inactive">⏳ Fecha desc.</span>`;
+                        }
                     }
 
                     const limitBadge = !showRisk && !p.ownerCanReceiveMore

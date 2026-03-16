@@ -1242,11 +1242,16 @@ async function handleClauseAnalysis(req, res, cookies) {
         };
 
         if (isMe) {
-          atRisk.push({ ...entry, isAtRisk: status.isActive });
+          // Si fecha desconocida, asumimos activa (lleva tiempo en el equipo)
+          const effectivelyActive = status.isActive || status.dateUnknown;
+          atRisk.push({ ...entry, isAtRisk: effectivelyActive });
         } else {
           if (status.dateUnknown) {
-            // No sabemos la fecha de compra → no podemos determinar si la cláusula está activa
-            dateUnknownPlayers.push(entry);
+            // Fecha desconocida → no aparece en el tablón reciente → lleva tiempo en el equipo
+            // Asumimos cláusula activa pero marcamos como estimación
+            if (canReceiveMore && !status.clauseDeactivated) {
+              canSteal.push({ ...entry, isActive: true, likelyActive: true });
+            }
           } else if (status.isActive && canReceiveMore) {
             canSteal.push(entry);
           } else if (!status.isActive && status.daysUntilActive > 0 && status.daysUntilActive <= 7) {
