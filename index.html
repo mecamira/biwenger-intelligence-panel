@@ -2444,15 +2444,23 @@
 
                     let statusBadge;
                     if (showRisk) {
+                        // Tabla "mis jugadores en riesgo"
                         statusBadge = p.isAtRisk
                             ? `<span class="badge-active">⚠️ Activa</span>`
                             : (p.clauseDeactivated
                                 ? `<span class="badge-deactivated">🏁 Desact. jornada</span>`
-                                : `<span class="badge-inactive">⏳ En ${p.daysUntilActive}d</span>`);
+                                : (p.daysUntilActive !== null
+                                    ? `<span class="badge-inactive">⏳ En ${p.daysUntilActive}d</span>`
+                                    : `<span class="badge-inactive">⏳ Fecha desc.</span>`));
                     } else {
+                        // Tabla "puedes robar" o "próximas activaciones"
                         statusBadge = p.clauseDeactivated
                             ? `<span class="badge-deactivated">🏁 Desact. jornada</span>`
-                            : `<span class="badge-active">✅ Activa</span>`;
+                            : (p.isActive
+                                ? `<span class="badge-active">✅ Activa</span>`
+                                : (p.daysUntilActive !== null
+                                    ? `<span class="badge-inactive">⏳ En ${p.daysUntilActive}d</span>`
+                                    : `<span class="badge-inactive">⏳ Fecha desc.</span>`));
                     }
 
                     const limitBadge = !showRisk && !p.ownerCanReceiveMore
