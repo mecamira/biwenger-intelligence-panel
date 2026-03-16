@@ -994,9 +994,10 @@ function countReceivedClausesThisWeek(boardData) {
 }
 
 // Construir mapa de última compra por jugador desde el historial del tablón
-// Retorna: { [playerId]: { date, price, buyerId } }
+// Retorna: { history: { [playerId]: { date, price, buyerId } }, clauseIncrements: { [playerId]: releaseClause } }
 function buildPurchaseHistoryFromBoard(boardData) {
   const history = {}; // playerId -> {date, price, buyerId}
+  const clauseIncrements = {}; // playerId -> releaseClause (precio real de cláusula tras subidas)
 
   // Ordenar cronológicamente (más antigua primero)
   const sorted = [...boardData].sort((a, b) => a.date - b.date);
@@ -1013,33 +1014,44 @@ function buildPurchaseHistoryFromBoard(boardData) {
         }
       });
     } else if (entry.type === 'transfer') {
-      // Venta directa entre usuarios: from = vendedor; el comprador no siempre está explícito
-      // Solo actualizamos el precio, el comprador queda como desconocido
       items.forEach(item => {
         const pid = String(item.player || item.playerID);
-        if (pid && item.amount) {
-          // Mantener buyerId si ya lo teníamos, o marcar como desconocido
+        if (!pid) return;
+        // Transfer con item.type==='clause' es una ejecución de cláusula (tiene from y to)
+        if ((item.type === 'clause' || item.type === 'clausula') && item.to?.id) {
+          history[pid] = { date: entry.date, price: item.amount || 0, buyerId: String(item.to.id) };
+        } else if (item.amount) {
+          // Venta directa: from = vendedor, comprador desconocido
           history[pid] = { date: entry.date, price: item.amount, buyerId: history[pid]?.buyerId || null };
         }
       });
     } else if (entry.type === 'clausula' || entry.type === 'clause') {
-      // Ejecución de cláusula: to = nuevo propietario
+      // Ejecución de cláusula como evento de nivel raíz: to = nuevo propietario
       items.forEach(item => {
         const pid = String(item.player || item.playerID);
         if (pid && item.to?.id) {
           history[pid] = { date: entry.date, price: item.amount || 0, buyerId: String(item.to.id) };
         }
       });
+    } else if (entry.type === 'clauseIncrement') {
+      // Subida de cláusula: expone el precio REAL de la cláusula tras la inversión
+      items.forEach(item => {
+        const pid = String(item.player || item.playerID);
+        if (pid && item.releaseClause) {
+          clauseIncrements[pid] = item.releaseClause;
+        }
+      });
     }
   });
 
-  return history;
+  return { history, clauseIncrements };
 }
 
 // Calcular estado de cláusula de un jugador
 // marketValue viene de los datos de competición (precio actual de mercado)
 // boardPurchase viene del historial del tablón: { date, price, buyerId }
-function calculateClauseStatus(player, nextJornadaDate, marketValue = 0, boardPurchase = null) {
+// knownReleaseClause: precio real de cláusula tras subidas (de clauseIncrement events)
+function calculateClauseStatus(player, nextJornadaDate, marketValue = 0, boardPurchase = null, knownReleaseClause = null) {
   const now = Math.floor(Date.now() / 1000);
 
   // Intentar obtener fecha de compra: primero del historial del tablón, luego de campos del player
@@ -1063,7 +1075,9 @@ function calculateClauseStatus(player, nextJornadaDate, marketValue = 0, boardPu
     }
   }
 
-  const clausePrice = Math.max(purchasePrice, marketValue);
+  // Si tenemos el precio real de cláusula (clauseIncrement), usarlo directamente
+  // Si no, calcular: max(precio_compra, VM)
+  const clausePrice = knownReleaseClause || Math.max(purchasePrice, marketValue);
 
   // Solo marcamos activa si SABEMOS la fecha y han pasado los 7 días
   const isActive = dateKnown && daysSincePurchase >= LEAGUE_CONFIG.clauses.daysToActivate && !clauseDeactivated;
@@ -1076,6 +1090,7 @@ function calculateClauseStatus(player, nextJornadaDate, marketValue = 0, boardPu
     purchasePrice,
     marketValue,
     clausePrice,
+    clausePriceIsReal: !!knownReleaseClause, // true = precio exacto del tablón, false = estimado
     daysSincePurchase: daysSincePurchase !== null ? Math.floor(daysSincePurchase) : null,
     daysUntilActive: daysUntilActive !== null ? Math.ceil(daysUntilActive) : null,
     isActive,
@@ -1139,18 +1154,34 @@ async function handleClauseAnalysis(req, res, cookies) {
       })(),
       // Fecha próxima jornada
       getNextJornadaDate(),
-      // Tablón para contar cláusulas recibidas esta semana
+      // Tablón completo: intentamos primero el endpoint de liga (más entradas) y luego home como fallback
       (async () => {
+        let boardData = [];
         try {
-          const homeRes = await fetch(`${BIWENGER_BASE_URL}/api/v2/home`, {
+          const leagueUrl = `${BIWENGER_BASE_URL}/api/v2/league/${context.leagueId}?fields=board`;
+          const leagueRes = await fetch(leagueUrl, {
             headers: { ...getBaseHeaders(token, context.leagueUserId, context.leagueId), 'Cookie': buildCookieString(cookies) }
           });
-          if (homeRes.ok) {
-            const homeData = await homeRes.json();
-            return homeData.data?.league?.board || [];
+          if (leagueRes.ok) {
+            const leagueData = await leagueRes.json();
+            boardData = leagueData.data?.board || [];
+            console.log(`[ClauseAnalysis] Board from league endpoint: ${boardData.length} entries`);
           }
         } catch (e) {}
-        return [];
+        // Si la liga no devuelve nada útil, usar home
+        if (!boardData.length) {
+          try {
+            const homeRes = await fetch(`${BIWENGER_BASE_URL}/api/v2/home`, {
+              headers: { ...getBaseHeaders(token, context.leagueUserId, context.leagueId), 'Cookie': buildCookieString(cookies) }
+            });
+            if (homeRes.ok) {
+              const homeData = await homeRes.json();
+              boardData = homeData.data?.league?.board || [];
+              console.log(`[ClauseAnalysis] Board from home endpoint: ${boardData.length} entries`);
+            }
+          } catch (e) {}
+        }
+        return boardData;
       })()
     ]);
 
@@ -1162,8 +1193,8 @@ async function handleClauseAnalysis(req, res, cookies) {
       });
     }
 
-    // Historial de compras reconstruido desde el tablón
-    const purchaseHistory = buildPurchaseHistoryFromBoard(boardData);
+    // Historial de compras y precios reales de cláusulas reconstruidos desde el tablón
+    const { history: purchaseHistory, clauseIncrements } = buildPurchaseHistoryFromBoard(boardData);
 
     const receivedThisWeek = countReceivedClausesThisWeek(boardData);
     const myUserId = String(context.leagueUserId);
@@ -1185,7 +1216,8 @@ async function handleClauseAnalysis(req, res, cookies) {
         if (!_sampleRawPlayer) _sampleRawPlayer = player;
         const mv = marketValues[String(player.id)] || 0;
         const boardPurchase = purchaseHistory[String(player.id)] || null;
-        const status = calculateClauseStatus(player, nextJornadaDate, mv, boardPurchase);
+        const knownReleaseClause = clauseIncrements[String(player.id)] || null;
+        const status = calculateClauseStatus(player, nextJornadaDate, mv, boardPurchase, knownReleaseClause);
 
         const entry = {
           playerId: player.id,
@@ -1232,6 +1264,7 @@ async function handleClauseAnalysis(req, res, cookies) {
       _debug: {
         marketValuesLoaded: Object.keys(marketValues).length,
         purchaseHistoryEntries: Object.keys(purchaseHistory).length,
+        clauseIncrementEntries: Object.keys(clauseIncrements).length,
         boardEntriesProcessed: boardData.length,
         sampleRawPlayer: _sampleRawPlayer,
         sampleMarketValue: _sampleRawPlayer ? marketValues[String(_sampleRawPlayer.id)] : null,

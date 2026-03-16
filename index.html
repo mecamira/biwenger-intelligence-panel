@@ -2470,7 +2470,7 @@
                         ${showOwner ? `<td class="clause-owner">${p.ownerName}</td>` : ''}
                         <td>${purchasePriceStr}</td>
                         <td>${vmStr}</td>
-                        <td class="clause-price">${p.clausePrice ? formatMoney(p.clausePrice) : '—'}</td>
+                        <td class="clause-price">${p.clausePrice ? formatMoney(p.clausePrice) + (p.clausePriceIsReal ? ' <span title="Precio real del tablón" style="color:#2e7d32;font-size:0.75rem;">✓</span>' : ' <span title="Precio estimado (max compra/VM)" style="color:#e65100;font-size:0.75rem;">~</span>') : '—'}</td>
                         <td>${daysStr}</td>
                         <td>${statusBadge}${limitBadge}</td>
                     </tr>`;
