@@ -1130,6 +1130,12 @@
                     <!-- Resumen -->
                     <div class="stats-grid" id="clausesSummary"></div>
 
+                    <!-- Aviso fecha desconocida -->
+                    <div id="clausesUnknownDiv" style="margin-bottom:20px;padding:14px 18px;background:#fff8e1;border-radius:12px;border-left:4px solid #f9a825;display:none;">
+                        <strong style="color:#e65100;">ℹ️ Jugadores sin fecha de compra en el historial</strong>
+                        <span id="clausesUnknownText" style="color:#555;font-size:0.9rem;"></span>
+                    </div>
+
                     <!-- Próxima jornada -->
                     <div id="clausesJornada" class="card" style="margin-bottom:20px;display:none;">
                         <h4 style="margin:0;color:#e65100;">⏰ Aviso de jornada</h4>
@@ -2372,6 +2378,7 @@
             const canStealCount = data.canSteal?.count || 0;
             const atRiskCount = data.atRisk?.count || 0;
             const upcomingCount = data.upcoming?.count || 0;
+            const unknownCount = data.dateUnknown?.count || 0;
             const jornadaText = data.nextJornada
                 ? new Date(data.nextJornada).toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long', hour:'2-digit', minute:'2-digit' })
                 : null;
@@ -2390,10 +2397,20 @@
                     <div class="stat-label">📅 Se activan en 7 días</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" style="font-size:1.1rem;">${jornadaText ? jornadaText : 'N/A'}</div>
+                    <div class="stat-value" style="font-size:1.1rem;">${jornadaText || 'N/A'}</div>
                     <div class="stat-label">🏁 Próxima jornada</div>
                 </div>
             `;
+
+            // Aviso jugadores con fecha desconocida
+            const unknownDiv = document.getElementById('clausesUnknownDiv');
+            if (unknownCount > 0) {
+                unknownDiv.style.display = 'block';
+                document.getElementById('clausesUnknownText').innerHTML =
+                    ` — <strong>${unknownCount} jugadores de rivales</strong> no aparecen en el historial reciente del tablón, por lo que no se puede determinar cuándo fueron comprados. Estos jugadores <em>pueden</em> tener la cláusula activa pero no se muestran para evitar falsos positivos. El historial se amplía conforme el tablón registre más movimientos.`;
+            } else {
+                unknownDiv.style.display = 'none';
+            }
 
             // Aviso si las cláusulas están a punto de desactivarse
             const jornadaDiv = document.getElementById('clausesJornada');
@@ -2442,16 +2459,19 @@
                         ? `<br><span class="badge-limit">Límite semana</span>`
                         : '';
 
-                    const purchasePriceStr = p.purchasePrice ? formatMoney(p.purchasePrice) : 'N/A';
-                    const vmStr = p.marketValue ? formatMoney(p.marketValue) : 'N/A';
+                    const purchasePriceStr = p.purchasePrice ? formatMoney(p.purchasePrice) : '—';
+                    const vmStr = p.marketValue ? formatMoney(p.marketValue) : '—';
+                    const daysStr = p.daysSincePurchase !== null
+                        ? `${p.daysSincePurchase}d${p.purchaseDateFormatted ? `<br><span style="font-size:0.75rem;color:#888;">${p.purchaseDateFormatted}</span>` : ''}`
+                        : `<span style="color:#999;">—</span>`;
 
                     return `<tr>
                         <td><strong>${name}</strong><br><span style="color:#888;font-size:0.8rem;">${pos}${team ? ' · ' + team : ''}</span></td>
                         ${showOwner ? `<td class="clause-owner">${p.ownerName}</td>` : ''}
                         <td>${purchasePriceStr}</td>
                         <td>${vmStr}</td>
-                        <td class="clause-price">${formatMoney(p.clausePrice)}</td>
-                        <td>${p.daysSincePurchase}d ${p.purchaseDateFormatted ? `<br><span style="font-size:0.75rem;color:#888;">${p.purchaseDateFormatted}</span>` : ''}</td>
+                        <td class="clause-price">${p.clausePrice ? formatMoney(p.clausePrice) : '—'}</td>
+                        <td>${daysStr}</td>
                         <td>${statusBadge}${limitBadge}</td>
                     </tr>`;
                 }).join('');

@@ -985,7 +985,6 @@ function countReceivedClausesThisWeek(boardData) {
     if (entry.type === 'clausula' || entry.type === 'clause') {
       const items = Array.isArray(entry.content) ? entry.content : (entry.content ? [entry.content] : []);
       items.forEach(item => {
-        // "from" es el equipo al que le roban el jugador (recibe la cláusula)
         const victimId = item.from?.id;
         if (victimId) received[victimId] = (received[victimId] || 0) + 1;
       });
@@ -994,16 +993,65 @@ function countReceivedClausesThisWeek(boardData) {
   return received;
 }
 
+// Construir mapa de última compra por jugador desde el historial del tablón
+// Retorna: { [playerId]: { date, price, buyerId } }
+function buildPurchaseHistoryFromBoard(boardData) {
+  const history = {}; // playerId -> {date, price, buyerId}
+
+  // Ordenar cronológicamente (más antigua primero)
+  const sorted = [...boardData].sort((a, b) => a.date - b.date);
+
+  sorted.forEach(entry => {
+    const items = Array.isArray(entry.content) ? entry.content : (entry.content ? [entry.content] : []);
+
+    if (entry.type === 'market') {
+      // Compra del mercado libre: to = comprador
+      items.forEach(item => {
+        const pid = String(item.player || item.playerID);
+        if (pid && item.to?.id) {
+          history[pid] = { date: entry.date, price: item.amount || 0, buyerId: String(item.to.id) };
+        }
+      });
+    } else if (entry.type === 'transfer') {
+      // Venta directa entre usuarios: from = vendedor; el comprador no siempre está explícito
+      // Solo actualizamos el precio, el comprador queda como desconocido
+      items.forEach(item => {
+        const pid = String(item.player || item.playerID);
+        if (pid && item.amount) {
+          // Mantener buyerId si ya lo teníamos, o marcar como desconocido
+          history[pid] = { date: entry.date, price: item.amount, buyerId: history[pid]?.buyerId || null };
+        }
+      });
+    } else if (entry.type === 'clausula' || entry.type === 'clause') {
+      // Ejecución de cláusula: to = nuevo propietario
+      items.forEach(item => {
+        const pid = String(item.player || item.playerID);
+        if (pid && item.to?.id) {
+          history[pid] = { date: entry.date, price: item.amount || 0, buyerId: String(item.to.id) };
+        }
+      });
+    }
+  });
+
+  return history;
+}
+
 // Calcular estado de cláusula de un jugador
 // marketValue viene de los datos de competición (precio actual de mercado)
-function calculateClauseStatus(player, nextJornadaDate, marketValue = 0) {
+// boardPurchase viene del historial del tablón: { date, price, buyerId }
+function calculateClauseStatus(player, nextJornadaDate, marketValue = 0, boardPurchase = null) {
   const now = Math.floor(Date.now() / 1000);
 
-  // Biwenger usa 'date' para la fecha de compra en el endpoint de usuario
-  // Probamos varios nombres de campo por si cambia entre versiones de la API
-  const purchaseDate = player.date || player.buyDate || player.purchasedAt || player.since || 0;
-  const daysSincePurchase = purchaseDate > 0 ? (now - purchaseDate) / 86400 : 999;
-  const daysUntilActive = Math.max(0, LEAGUE_CONFIG.clauses.daysToActivate - daysSincePurchase);
+  // Intentar obtener fecha de compra: primero del historial del tablón, luego de campos del player
+  const purchaseDate = boardPurchase?.date || player.date || player.buyDate || player.purchasedAt || player.since || 0;
+  // Precio de compra: del tablón, o del campo price del player en la API de usuario
+  const purchasePrice = boardPurchase?.price || player.price || 0;
+
+  const dateKnown = purchaseDate > 0;
+  const daysSincePurchase = dateKnown ? (now - purchaseDate) / 86400 : null;
+  const daysUntilActive = daysSincePurchase !== null
+    ? Math.max(0, LEAGUE_CONFIG.clauses.daysToActivate - daysSincePurchase)
+    : null;
 
   let clauseDeactivated = false;
   let hoursUntilJornada = null;
@@ -1015,20 +1063,23 @@ function calculateClauseStatus(player, nextJornadaDate, marketValue = 0) {
     }
   }
 
-  // player.price en el endpoint de usuario = precio de compra (lo que pagó el gestor)
-  // marketValue = valor de mercado actual (de la API de competición)
-  const purchasePrice = player.price || 0;
   const clausePrice = Math.max(purchasePrice, marketValue);
+
+  // Solo marcamos activa si SABEMOS la fecha y han pasado los 7 días
+  const isActive = dateKnown && daysSincePurchase >= LEAGUE_CONFIG.clauses.daysToActivate && !clauseDeactivated;
+  // dateUnknown = no podemos determinar el estado de la cláusula
+  const dateUnknown = !dateKnown;
 
   return {
     purchaseDate,
-    purchaseDateFormatted: purchaseDate ? new Date(purchaseDate * 1000).toLocaleDateString('es-ES') : null,
+    purchaseDateFormatted: dateKnown ? new Date(purchaseDate * 1000).toLocaleDateString('es-ES') : null,
     purchasePrice,
     marketValue,
     clausePrice,
-    daysSincePurchase: purchaseDate > 0 ? Math.floor(daysSincePurchase) : null,
-    daysUntilActive: Math.ceil(daysUntilActive),
-    isActive: daysSincePurchase >= LEAGUE_CONFIG.clauses.daysToActivate && !clauseDeactivated,
+    daysSincePurchase: daysSincePurchase !== null ? Math.floor(daysSincePurchase) : null,
+    daysUntilActive: daysUntilActive !== null ? Math.ceil(daysUntilActive) : null,
+    isActive,
+    dateUnknown,
     clauseDeactivated,
     hoursUntilJornada
   };
@@ -1111,12 +1162,16 @@ async function handleClauseAnalysis(req, res, cookies) {
       });
     }
 
+    // Historial de compras reconstruido desde el tablón
+    const purchaseHistory = buildPurchaseHistoryFromBoard(boardData);
+
     const receivedThisWeek = countReceivedClausesThisWeek(boardData);
     const myUserId = String(context.leagueUserId);
 
     const canSteal = [];
     const atRisk = [];
     const upcoming = [];
+    const dateUnknownPlayers = []; // jugadores cuya fecha de compra no sabemos
 
     // Debug: guardar una muestra de jugador raw para diagnóstico
     let _sampleRawPlayer = null;
@@ -1127,9 +1182,10 @@ async function handleClauseAnalysis(req, res, cookies) {
       const canReceiveMore = userReceivedCount < LEAGUE_CONFIG.clauses.limitsReceived.count;
 
       for (const player of (user.players || [])) {
-        if (!_sampleRawPlayer) _sampleRawPlayer = player; // guardar primero para debug
+        if (!_sampleRawPlayer) _sampleRawPlayer = player;
         const mv = marketValues[String(player.id)] || 0;
-        const status = calculateClauseStatus(player, nextJornadaDate, mv);
+        const boardPurchase = purchaseHistory[String(player.id)] || null;
+        const status = calculateClauseStatus(player, nextJornadaDate, mv, boardPurchase);
 
         const entry = {
           playerId: player.id,
@@ -1143,7 +1199,10 @@ async function handleClauseAnalysis(req, res, cookies) {
         if (isMe) {
           atRisk.push({ ...entry, isAtRisk: status.isActive });
         } else {
-          if (status.isActive && canReceiveMore) {
+          if (status.dateUnknown) {
+            // No sabemos la fecha de compra → no podemos determinar si la cláusula está activa
+            dateUnknownPlayers.push(entry);
+          } else if (status.isActive && canReceiveMore) {
             canSteal.push(entry);
           } else if (!status.isActive && status.daysUntilActive > 0 && status.daysUntilActive <= 7) {
             upcoming.push(entry);
@@ -1168,11 +1227,15 @@ async function handleClauseAnalysis(req, res, cookies) {
       canSteal: { count: canSteal.length, players: canSteal },
       atRisk: { count: atRisk.filter(p => p.isAtRisk).length, players: atRisk },
       upcoming: { count: upcoming.length, players: upcoming },
+      dateUnknown: { count: dateUnknownPlayers.length, players: dateUnknownPlayers },
       receivedThisWeek,
       _debug: {
         marketValuesLoaded: Object.keys(marketValues).length,
-        sampleRawPlayer: _sampleRawPlayer, // Ver campos reales que devuelve la API
-        sampleMarketValue: _sampleRawPlayer ? marketValues[String(_sampleRawPlayer.id)] : null
+        purchaseHistoryEntries: Object.keys(purchaseHistory).length,
+        boardEntriesProcessed: boardData.length,
+        sampleRawPlayer: _sampleRawPlayer,
+        sampleMarketValue: _sampleRawPlayer ? marketValues[String(_sampleRawPlayer.id)] : null,
+        sampleBoardPurchase: _sampleRawPlayer ? purchaseHistory[String(_sampleRawPlayer.id)] : null
       }
     });
   } catch (error) {
